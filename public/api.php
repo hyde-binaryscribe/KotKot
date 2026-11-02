@@ -14,6 +14,26 @@ header('X-Content-Type-Options: nosniff');
 
 $action = is_string($_GET['a'] ?? null) ? $_GET['a'] : 'state';
 
+// Profile pictures: made on first request for photos sent before V2.5.
+if ($action === 'avatar') {
+    if (current_device() === null) {
+        http_response_code(401);
+        exit;
+    }
+    $henId = (int) ($_GET['id'] ?? 0);
+    if (!is_file(avatar_path($henId))) {
+        refresh_hen_avatar($henId);
+    }
+    if (!is_file(avatar_path($henId))) {
+        http_response_code(404);
+        exit;
+    }
+    header('Content-Type: image/jpeg');
+    header('Cache-Control: private, max-age=31536000, immutable');
+    readfile(avatar_path($henId));
+    exit;
+}
+
 // Hen photos are images, not JSON.
 if ($action === 'photo') {
     if (current_device() === null) {
@@ -103,6 +123,8 @@ $routes = [
     'hen_photo' => 'action_hen_photo',
     'hen_photos' => 'action_hen_photos',
     'hen_photo_remove' => 'action_hen_photo_remove',
+    'hen_profile' => 'action_hen_profile',
+    'hen_crop' => 'action_hen_crop',
     'settings_save' => 'action_settings_save',
     'pin_change' => 'action_pin_change',
     'person_save' => 'action_person_save',

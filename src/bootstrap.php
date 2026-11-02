@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const KK_VERSION = '2.4.0';
+const KK_VERSION = '2.5.0';
 define('KK_ROOT', dirname(__DIR__));
 define('KK_DATA', rtrim(getenv('KOTKOT_DATA') ?: KK_ROOT . '/data', '/'));
 
@@ -381,6 +381,17 @@ function migrate_household(PDO $pdo): void
         ALTER TABLE eggs ADD COLUMN defects TEXT NOT NULL DEFAULT '';
         ALTER TABLE eggs ADD COLUMN note TEXT NOT NULL DEFAULT '';
         PRAGMA user_version = 4;
+        SQL);
+        $version = 4;
+    }
+    if ($version < 5) {
+        // V2.5: profile picture — the latest photo unless one is chosen, and how it is framed.
+        $pdo->exec(<<<SQL
+        ALTER TABLE hens ADD COLUMN profile_photo INTEGER;
+        ALTER TABLE hens ADD COLUMN crop_photo INTEGER;
+        ALTER TABLE hens ADD COLUMN crop TEXT;
+        ALTER TABLE hens ADD COLUMN avatar_rev INTEGER NOT NULL DEFAULT 0;
+        PRAGMA user_version = 5;
         SQL);
     }
 }

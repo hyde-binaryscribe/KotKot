@@ -36,6 +36,8 @@
     apple: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>',
     calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
+    star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></svg>',
+    crop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>',
     pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   };
 
@@ -253,7 +255,12 @@
 
   // ------------------------------------------------------------------ navigation
   const go = (hash) => { if (location.hash !== hash) location.hash = hash; else render(); };
-  window.addEventListener('hashchange', () => { errorText = ''; render(); window.scrollTo(0, 0); });
+  window.addEventListener('hashchange', () => {
+    errorText = '';
+    if (!toastUndo) hideToast(); // plain messages go with the screen; « Annuler » stays its 8 seconds
+    render();
+    window.scrollTo(0, 0);
+  });
 
   function route() {
     const parts = location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -270,7 +277,7 @@
   const me = () => S.me || null;
   const avatar = (p, cls = '') => `<span class="avatar ${cls}" style="background:${h(p.color)}" aria-hidden="true">${h((p.name || '?')[0].toUpperCase())}</span>`;
   const henAvatar = (hen, cls = '') => hen.photo
-    ? `<span class="avatar ${cls}" aria-hidden="true"><img src="${photoUrl(hen.photo)}" alt=""></span>`
+    ? `<span class="avatar ${cls}" aria-hidden="true"><img src="${API}?a=avatar&id=${hen.id}&v=${hen.avatar || hen.photo}" alt=""></span>`
     : `<span class="avatar ${cls}" style="background:${henColor(hen)}" aria-hidden="true">${h(hen.name[0].toUpperCase())}</span>`;
   const photoUrl = (photoId) => `${API}?a=photo&id=${photoId}`;
   // Kinds of poultry (same keys as the server)
@@ -342,6 +349,7 @@
     // PIN pad keeps its own state so focus is not lost between taps
     if (app.querySelector('.pad')) updateDots();
     if (app.querySelector('[data-push-status]')) refreshPushStatus();
+    if (document.getElementById('crop-img')) cropSetup();
   }
 
   // ---------- bienvenue (personne de connecté)
@@ -1150,8 +1158,18 @@
         ${photos.map((p) => `<figure class="photo-fig" role="listitem">
           <a href="${photoUrl(p.id)}" target="_blank" rel="noopener"><img src="${photoUrl(p.id)}" alt="${h(hen.name)} le ${h(fmtDate(p.at))}" loading="lazy"></a>
           <figcaption>${h(fmtDate(p.at))}${ageAt(hen, p.at) ? `<br><span class="muted">à ${ageAt(hen, p.at)}</span>` : first && p.id !== first.id ? `<br><span class="muted">+ ${span(first.at, p.at)}</span>` : ''}</figcaption>
+          ${p.id === hen.photo ? `<span class="pill profile-pill">${I.star} Photo de profil</span>`
+            : `<button class="btn" type="button" data-act="setProfile" data-id="${hen.id}" data-photo-id="${p.id}" style="min-height:2.8rem;padding:.2rem .6rem">${I.star} En profil</button>`}
           <button class="btn" type="button" data-act="photoRemove" data-id="${hen.id}" data-photo-id="${p.id}" style="min-height:2.8rem;padding:.2rem .6rem">Suppr.</button>
         </figure>`).join('')}
+      </div>
+      <div class="card stack">
+        <b>Photo de profil</b>
+        <span>${hen.profilePhoto ? 'Une photo choisie, qui reste même si vous en ajoutez d\'autres.' : 'Toujours la photo la plus récente.'}</span>
+        <div class="grid2">
+          <a class="btn" href="#/poule/${hen.id}/recadrer">${I.crop} Recadrer</a>
+          ${hen.profilePhoto ? `<button class="btn" type="button" data-act="profileAuto" data-id="${hen.id}">Prendre la plus récente</button>` : ''}
+        </div>
       </div>` : '<p class="muted" style="margin:0">Une photo de temps en temps (par exemple chaque mois) pour voir comment il ou elle grandit.</p>'}
       ${photoError ? `<div class="error" role="alert">${h(photoError)}</div>` : ''}
       ${!S.household?.premium && photos.length >= S.household.freePhotos ? `
@@ -1163,6 +1181,105 @@
           <span class="muted">Sinon : la date où la photo a été prise.</span></div>
         <label class="btn primary">${I.camera} Ajouter une photo<input class="sr" type="file" accept="image/*" data-photo="${hen.id}"></label>
       </div>`}`;
+  }
+
+  // ---------- recadrer la photo de profil
+  let crop = null;
+  function viewCrop(hen) {
+    if (!hen.photo) return `${back(`#/poule/${hen.id}`, hen.name)}<p>Ajoutez d'abord une photo dans l'album.</p>`;
+    if (!crop || crop.henId !== hen.id || crop.photoId !== hen.photo) {
+      crop = { henId: hen.id, photoId: hen.photo, w: 0, h: 0, x: hen.crop?.x ?? null, y: hen.crop?.y ?? null, size: hen.crop?.size ?? 1 };
+    }
+    return `
+      ${back(`#/poule/${hen.id}`, hen.name)}
+      <h1>Recadrer</h1>
+      <p class="muted" style="margin:0">Faites glisser le carré, ou touchez la tête de ${h(hen.name)} pour y centrer le cadre.</p>
+      ${err()}
+      <div class="crop-box" id="crop-box">
+        <img id="crop-img" src="${photoUrl(hen.photo)}" alt="Photo de ${h(hen.name)}" draggable="false">
+        <div class="crop-frame" id="crop-frame" aria-hidden="true"></div>
+      </div>
+      <div class="crop-tools">
+        <div class="crop-preview-wrap"><div class="crop-preview" id="crop-preview" aria-hidden="true"></div><span class="muted">Aperçu</span></div>
+        <div class="crop-pad" role="group" aria-label="Déplacer le cadre">
+          <span></span><button class="btn" type="button" data-act="cropMove" data-dx="0" data-dy="-1" aria-label="Monter">↑</button><span></span>
+          <button class="btn" type="button" data-act="cropMove" data-dx="-1" data-dy="0" aria-label="À gauche">←</button>
+          <span></span>
+          <button class="btn" type="button" data-act="cropMove" data-dx="1" data-dy="0" aria-label="À droite">→</button>
+          <span></span><button class="btn" type="button" data-act="cropMove" data-dx="0" data-dy="1" aria-label="Descendre">↓</button><span></span>
+        </div>
+      </div>
+      <div class="grid2">
+        <button class="btn" type="button" data-act="cropZoom" data-v="1">${I.plus} Zoomer</button>
+        <button class="btn" type="button" data-act="cropZoom" data-v="-1">Élargir</button>
+      </div>
+      <button class="btn primary big" type="button" data-act="cropSave">Enregistrer</button>`;
+  }
+
+  /** Clamps the square inside the photo. x, y: top-left as fractions; size: side / shortest side. */
+  function cropClamp() {
+    const m = Math.min(crop.w, crop.h);
+    crop.size = Math.max(0.2, Math.min(1, crop.size));
+    const sw = (crop.size * m) / crop.w;
+    const sh = (crop.size * m) / crop.h;
+    if (crop.x === null) { crop.x = (1 - sw) / 2; crop.y = (1 - sh) / 2; }
+    crop.x = Math.max(0, Math.min(1 - sw, crop.x));
+    crop.y = Math.max(0, Math.min(1 - sh, crop.y));
+    return { sw, sh };
+  }
+
+  function cropDraw() {
+    const frame = document.getElementById('crop-frame');
+    if (!frame || !crop.w) return;
+    const { sw, sh } = cropClamp();
+    Object.assign(frame.style, { left: `${crop.x * 100}%`, top: `${crop.y * 100}%`, width: `${sw * 100}%`, height: `${sh * 100}%`, display: 'block' });
+    const pv = document.getElementById('crop-preview');
+    const P = pv.offsetWidth || 96;
+    pv.style.backgroundImage = `url("${photoUrl(crop.photoId)}")`;
+    pv.style.backgroundSize = `${P / sw}px ${P / sh}px`;
+    pv.style.backgroundPosition = `${(-crop.x / sw) * P}px ${(-crop.y / sh) * P}px`;
+  }
+
+  function cropSetup() {
+    const img = document.getElementById('crop-img');
+    const box = document.getElementById('crop-box');
+    if (!img || box.dataset.ready) return;
+    box.dataset.ready = '1';
+    const start = () => { crop.w = img.naturalWidth; crop.h = img.naturalHeight; cropDraw(); };
+    if (img.complete && img.naturalWidth) start(); else img.addEventListener('load', start);
+    let drag = null;
+    box.addEventListener('pointerdown', (ev) => {
+      if (!crop.w) return;
+      ev.preventDefault();
+      const rect = box.getBoundingClientRect();
+      const { sw, sh } = cropClamp();
+      const fx = (ev.clientX - rect.left) / rect.width;
+      const fy = (ev.clientY - rect.top) / rect.height;
+      if (ev.target.id !== 'crop-frame') { crop.focus = { x: fx, y: fy }; crop.x = fx - sw / 2; crop.y = fy - sh / 2; cropDraw(); } // outside: centre there
+      drag = { fx, fy, x: crop.x, y: crop.y, rect, sx: ev.clientX, sy: ev.clientY, moved: false };
+      box.setPointerCapture(ev.pointerId);
+    });
+    box.addEventListener('pointermove', (ev) => {
+      if (!drag) return;
+      if (Math.abs(ev.clientX - drag.sx) + Math.abs(ev.clientY - drag.sy) > 6) drag.moved = true;
+      if (!drag.moved) return;
+      crop.x = drag.x + (ev.clientX - drag.rect.left) / drag.rect.width - drag.fx;
+      crop.y = drag.y + (ev.clientY - drag.rect.top) / drag.rect.height - drag.fy;
+      crop.focus = null;
+      cropDraw();
+    });
+    box.addEventListener('pointerup', () => {
+      // a simple touch (no slide), even inside the frame: centre the frame there
+      if (drag && !drag.moved) {
+        const { sw, sh } = cropClamp();
+        crop.focus = { x: drag.fx, y: drag.fy }; // remembered: zooming in will close in on it
+        crop.x = drag.fx - sw / 2;
+        crop.y = drag.fy - sh / 2;
+        cropDraw();
+      }
+      drag = null;
+    });
+    box.addEventListener('pointercancel', () => { drag = null; });
   }
 
   function henHealth(hen) {
@@ -1181,6 +1298,7 @@
     const hen = (S.hens || []).find((x) => String(x.id) === r.id);
     if (!hen) return `${back('#/poules', 'Mes poules')}<p>Cette poule n'est plus dans la liste.</p>`;
     if (r.sub === 'modifier') return viewHenForm(hen);
+    if (r.sub === 'recadrer') return viewCrop(hen);
     if (notesFor !== hen.id) loadNotes(hen.id);
     const since = (iso) => spanDays(daysBetween(iso, S.today));
     const rows = [
@@ -1194,7 +1312,7 @@
       ${back('#/poules', `Mes ${flockTitle()}`)}
       ${err()}
       <div class="row">
-        ${henAvatar(hen, 'xl')}
+        ${hen.photo ? `<a href="#/poule/${hen.id}/recadrer" class="avatar-link" aria-label="Recadrer la photo de profil">${henAvatar(hen, 'xl')}</a>` : henAvatar(hen, 'xl')}
         <div class="stack" style="gap:.3rem"><h1>${h(hen.name)}</h1>${hen.breed ? `<span class="muted">${h(hen.breed)}</span>` : ''}
           <span><span class="pill ${hen.status === 'watch' ? 'watch' : ''}">${hen.status === 'watch' ? 'À surveiller' : 'En forme'}</span></span></div>
       </div>
@@ -1705,6 +1823,39 @@
       q.recent = q.recent.filter((x) => x.clientId !== el.dataset.cid);
       enqueue('egg_undo', { clientId: el.dataset.cid });
       toast('Remarque supprimée');
+    },
+    async setProfile(el) {
+      await call('hen_profile', { id: Number(el.dataset.id), photoId: Number(el.dataset.photoId) });
+      toast('Nouvelle photo de profil'); render();
+    },
+    async profileAuto(el) {
+      await call('hen_profile', { id: Number(el.dataset.id), photoId: null });
+      toast('La photo la plus récente sera toujours la photo de profil'); render();
+    },
+    cropMove(el) {
+      crop.focus = null;
+      const { sw, sh } = cropClamp();
+      crop.x += Number(el.dataset.dx) * sw * 0.1;
+      crop.y += Number(el.dataset.dy) * sh * 0.1;
+      cropDraw();
+    },
+    cropZoom(el) {
+      const { sw, sh } = cropClamp();
+      const cx = crop.focus ? crop.focus.x : crop.x + sw / 2;
+      const cy = crop.focus ? crop.focus.y : crop.y + sh / 2;
+      crop.size *= Number(el.dataset.v) > 0 ? 0.85 : 1 / 0.85;
+      const n = cropClamp();
+      crop.x = cx - n.sw / 2; crop.y = cy - n.sh / 2;
+      cropDraw();
+    },
+    async cropSave() {
+      if (!crop?.w) return;
+      cropClamp();
+      await call('hen_crop', { id: crop.henId, photoId: crop.photoId, x: +crop.x.toFixed(4), y: +crop.y.toFixed(4), size: +crop.size.toFixed(4) });
+      toast('Photo de profil recadrée');
+      const id = crop.henId;
+      crop = null;
+      go(`#/poule/${id}`);
     },
     calMove(el) { calMonth = shiftMonth(calMonth || monthOf(S.today), Number(el.dataset.v)); render(); },
     eggDay(el) {

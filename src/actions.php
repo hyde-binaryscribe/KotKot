@@ -500,12 +500,12 @@ function action_hen_photo(): array
         }
     }
 
-    // square crop, 800 px: light for a phone, sharp enough to compare growth
+    // the whole photo, 1600 px at most: the album shows it whole, the profile picture is framed from it
     $w = imagesx($img);
     $h = imagesy($img);
-    $side = min($w, $h);
-    $out = imagecreatetruecolor(800, 800);
-    imagecopyresampled($out, $img, 0, 0, intdiv($w - $side, 2), intdiv($h - $side, 2), 800, 800, $side, $side);
+    $scale = min(1, 1600 / max($w, $h));
+    $out = imagecreatetruecolor(max(1, (int) round($w * $scale)), max(1, (int) round($h * $scale)));
+    imagecopyresampled($out, $img, 0, 0, 0, 0, imagesx($out), imagesy($out), $w, $h);
     if (!is_dir(photo_dir())) {
         mkdir(photo_dir(), 0775, true);
     }
@@ -530,16 +530,102 @@ function action_hen_photo_remove(array $in): array
     if ($st->rowCount() > 0 && is_file(photo_path($photoId))) {
         unlink(photo_path($photoId));
     }
+    // the chosen profile photo is gone: back to « the latest one »
+    db()->prepare('UPDATE hens SET profile_photo = NULL WHERE id = ? AND profile_photo = ?')->execute([$henId, $photoId]);
     refresh_hen_avatar($henId);
     return action_hen_photos(['id' => $henId]);
 }
 
-/** The most recent photo is the hen's portrait. */
+function avatar_path(int $henId): string
+{
+    return photo_dir() . '/avatar-' . $henId . '.jpg';
+}
+
+/**
+ * The profile picture: the chosen photo, or else the latest one; framed as chosen
+ * (if the framing was made on that photo), or else a centered square. Saved as a
+ * 400 px square so lists stay light.
+ */
 function refresh_hen_avatar(int $henId): void
 {
-    $st = db()->prepare('SELECT id FROM hen_photos WHERE hen_id = ? ORDER BY taken_at DESC, id DESC LIMIT 1');
+    $st = db()->prepare('SELECT profile_photo, crop_photo, crop FROM hens WHERE id = ?');
     $st->execute([$henId]);
-    db()->prepare('UPDATE hens SET photo = ? WHERE id = ?')->execute([(int) ($st->fetchColumn() ?: 0), $henId]);
+    $hen = $st->fetch();
+    if (!$hen) {
+        return;
+    }
+    $photoId = 0;
+    if ($hen['profile_photo']) {
+        $st = db()->prepare('SELECT id FROM hen_photos WHERE id = ? AND hen_id = ?');
+        $st->execute([(int) $hen['profile_photo'], $henId]);
+        $photoId = (int) ($st->fetchColumn() ?: 0);
+    }
+    if (!$photoId) {
+        $st = db()->prepare('SELECT id FROM hen_photos WHERE hen_id = ? ORDER BY taken_at DESC, id DESC LIMIT 1');
+        $st->execute([$henId]);
+        $photoId = (int) ($st->fetchColumn() ?: 0);
+    }
+    $rev = 0;
+    if ($photoId && ($img = @imagecreatefromjpeg(photo_path($photoId)))) {
+        $w = imagesx($img);
+        $h = imagesy($img);
+        $crop = (int) $hen['crop_photo'] === $photoId ? json_decode((string) $hen['crop'], true) : null;
+        $side = (int) round(min($w, $h) * (is_array($crop) ? $crop['size'] : 1));
+        $x = is_array($crop) ? (int) round($crop['x'] * $w) : intdiv($w - $side, 2);
+        $y = is_array($crop) ? (int) round($crop['y'] * $h) : intdiv($h - $side, 2);
+        $side = max(1, min($side, $w, $h));
+        $x = max(0, min($x, $w - $side));
+        $y = max(0, min($y, $h - $side));
+        $out = imagecreatetruecolor(400, 400);
+        imagecopyresampled($out, $img, 0, 0, $x, $y, 400, 400, $side, $side);
+        if (!is_dir(photo_dir())) {
+            mkdir(photo_dir(), 0775, true);
+        }
+        imagejpeg($out, avatar_path($henId), 85);
+        $rev = now_ts() * 100 + random_int(0, 99);
+    } elseif (is_file(avatar_path($henId))) {
+        unlink(avatar_path($henId));
+    }
+    db()->prepare('UPDATE hens SET photo = ?, avatar_rev = ? WHERE id = ?')->execute([$photoId, $rev, $henId]);
+}
+
+/** Choose the profile photo (photoId), or go back to « always the latest » (photoId null). */
+function action_hen_profile(array $in): array
+{
+    require_auth();
+    $henId = (int) ($in['id'] ?? 0);
+    $photoId = isset($in['photoId']) ? (int) $in['photoId'] : null;
+    if ($photoId !== null) {
+        $st = db()->prepare('SELECT 1 FROM hen_photos WHERE id = ? AND hen_id = ?');
+        $st->execute([$photoId, $henId]);
+        if (!$st->fetchColumn()) {
+            throw new ApiError('Photo introuvable.', 404);
+        }
+    }
+    db()->prepare('UPDATE hens SET profile_photo = ? WHERE id = ?')->execute([$photoId, $henId]);
+    refresh_hen_avatar($henId);
+    return [];
+}
+
+/**
+ * Frame the profile picture: a square inside the photo, as fractions
+ * (x, y = top-left corner of the photo's width/height; size = side / shortest side).
+ */
+function action_hen_crop(array $in): array
+{
+    require_auth();
+    $henId = (int) ($in['id'] ?? 0);
+    $photoId = (int) ($in['photoId'] ?? 0);
+    $st = db()->prepare('SELECT 1 FROM hen_photos WHERE id = ? AND hen_id = ?');
+    $st->execute([$photoId, $henId]);
+    if (!$st->fetchColumn()) {
+        throw new ApiError('Photo introuvable.', 404);
+    }
+    $num = fn ($k, $min, $max) => is_numeric($in[$k] ?? null) ? max($min, min($max, (float) $in[$k])) : throw new ApiError('Cadrage invalide.');
+    $crop = ['x' => $num('x', 0, 1), 'y' => $num('y', 0, 1), 'size' => $num('size', 0.1, 1)];
+    db()->prepare('UPDATE hens SET crop_photo = ?, crop = ? WHERE id = ?')->execute([$photoId, json_encode($crop), $henId]);
+    refresh_hen_avatar($henId);
+    return [];
 }
 
 function orient_image(GdImage $img, int $orientation): GdImage

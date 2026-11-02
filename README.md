@@ -8,6 +8,11 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 - **Marche sans réseau** au fond du jardin : les clics sont gardés sur le téléphone et envoyés dès que ça capte.
 - S'installe comme une appli (PWA) : « Ajouter à l'écran d'accueil ».
 
+## Nouveautés V2.5
+
+- **Qualité des œufs** : on note les mauvais œufs (fêlé, sale, coquille molle…) avec un commentaire ; « 4 bons · 1 mauvais » et bilan sur 30 jours.
+- **Photo de profil** : la plus récente par défaut, ou celle qu'on choisit (« En profil ») ; **recadrage** au doigt.
+
 ## Nouveautés V2.3
 
 - **Toutes les volailles** : poules, cailles, canards, oies, dindes, pintades ; les œufs sont comptés par espèce.

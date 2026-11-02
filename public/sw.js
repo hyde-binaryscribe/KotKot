@@ -1,10 +1,10 @@
 /* KotKot service worker: the app opens even without network. */
-const CACHE = 'kotkot-2.4.0';
+const CACHE = 'kotkot-2.5.0';
 const SHELL = [
   './',
-  'assets/app.css?v=2.4.0',
-  'assets/breeds.js?v=2.4.0',
-  'assets/app.js?v=2.4.0',
+  'assets/app.css?v=2.5.0',
+  'assets/breeds.js?v=2.5.0',
+  'assets/app.js?v=2.5.0',
   'assets/icon.svg',
   'assets/icon-192.png',
   'assets/icon-512.png',

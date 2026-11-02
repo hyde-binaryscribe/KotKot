@@ -24,6 +24,11 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 - [x] Photos réduites sur le téléphone avant l'envoi (plus de « La photo n'a pas pu être envoyée »)
 - [x] Champ date bien affiché sur iPhone
 
+## V2.4 / V2.5 — fait
+- [x] **Qualité des œufs** : bons et mauvais, critères (fêlé, sale, coquille molle…), commentaires, bilan 30 jours
+- [x] **Photo de profil** : la plus récente par défaut, ou une photo choisie ; **recadrage** au doigt (toucher, glisser, zoomer, flèches)
+- [x] Photos de l'album gardées entières
+
 ## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité

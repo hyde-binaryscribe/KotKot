@@ -287,6 +287,19 @@ details summary::-webkit-details-marker { display: none; }
 .check-row { display: flex; gap: .8rem; align-items: flex-start; padding: .8rem; border: 2px solid var(--line); border-radius: 1rem; background: #fff; font-weight: 700; }
 .check-row input { width: 1.6rem; height: 1.6rem; flex-shrink: 0; accent-color: var(--ink); }
 
+/* photo de profil et recadrage */
+.avatar-link { border-radius: 50%; flex-shrink: 0; }
+.profile-pill { display: inline-flex; align-items: center; gap: .3rem; align-self: flex-start; }
+.profile-pill svg, .btn svg.star { width: 1rem; height: 1rem; }
+.crop-box { position: relative; touch-action: none; user-select: none; -webkit-user-select: none; border-radius: 1rem; overflow: hidden; background: #000; cursor: crosshair; }
+.crop-box img { display: block; width: 100%; height: auto; pointer-events: none; }
+.crop-frame { position: absolute; display: none; border: 3px solid #fff; border-radius: 50%; box-shadow: 0 0 0 3px var(--yolk), 0 0 0 9999px rgba(0,0,0,.35); cursor: move; touch-action: none; }
+.crop-tools { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.crop-preview-wrap { display: flex; flex-direction: column; align-items: center; gap: .3rem; }
+.crop-preview { width: 6rem; height: 6rem; border-radius: 50%; border: 3px solid var(--ink); background-color: var(--card); background-repeat: no-repeat; }
+.crop-pad { display: grid; grid-template-columns: repeat(3, 3.4rem); grid-template-rows: repeat(3, 3.4rem); gap: .3rem; }
+.crop-pad .btn { padding: 0; min-height: 3.4rem; font-size: 1.4rem; }
+
 /* ---------- forms ---------- */
 .field { display: flex; flex-direction: column; gap: .35rem; }
 .field label, .field .lab { font-weight: 700; }

@@ -276,7 +276,8 @@ function tasks_state(DateTimeImmutable $now): array
 
 function hens_list(): array
 {
-    $rows = db()->query("SELECT id, name, species, breed, arrived, arrived_on, born_on, mark, egg_color, status, photo
+    $rows = db()->query("SELECT id, name, species, breed, arrived, arrived_on, born_on, mark, egg_color, status, photo,
+            profile_photo, crop_photo, crop, avatar_rev
         FROM hens WHERE active = 1 ORDER BY name COLLATE NOCASE")->fetchAll();
     return array_map(fn ($r) => [
         'id' => (int) $r['id'],
@@ -290,5 +291,8 @@ function hens_list(): array
         'eggColor' => $r['egg_color'],
         'status' => $r['status'],
         'photo' => (int) $r['photo'],
+        'profilePhoto' => $r['profile_photo'] !== null ? (int) $r['profile_photo'] : null,
+        'crop' => (int) $r['crop_photo'] === (int) $r['photo'] && $r['crop'] ? json_decode($r['crop'], true) : null,
+        'avatar' => (int) $r['avatar_rev'],
     ], $rows);
 }
