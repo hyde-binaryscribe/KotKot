@@ -7,6 +7,7 @@ require __DIR__ . '/../src/state.php';
 require __DIR__ . '/../src/actions.php';
 require __DIR__ . '/../src/accounts.php';
 require __DIR__ . '/../src/push.php';
+require __DIR__ . '/../src/oauth.php';
 
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -30,7 +31,23 @@ if ($action === 'photo') {
     exit;
 }
 
+// « Continuer avec Google / Apple »: a page change, not JSON.
+if ($action === 'oauth_start') {
+    oauth_start(is_string($_GET['provider'] ?? null) ? $_GET['provider'] : '');
+}
+
 header('Content-Type: application/json; charset=utf-8');
+
+// Live sync: phones ask every few seconds whether something changed (tiny answer).
+if ($action === 'rev') {
+    if (current_device() === null) {
+        http_response_code(401);
+        echo '{"ok":false}';
+        exit;
+    }
+    echo json_encode(['ok' => true, 'rev' => (int) household()['rev']]);
+    exit;
+}
 
 // Export: a file download for the account holder.
 if ($action === 'export') {
@@ -49,6 +66,8 @@ $routes = [
     'account_create' => 'action_account_create',
     'account_login' => 'action_account_login',
     'account_logout' => 'action_account_logout',
+    'account_register' => 'action_account_register',
+    'membership_leave' => 'action_membership_leave',
     'account_delete' => 'action_account_delete',
     'household_create' => 'action_household_create',
     'household_enter' => 'action_household_enter',
@@ -113,6 +132,12 @@ try {
         }
     }
     $result = $routes[$action]($input);
+    // Something changed in a household: the other phones will see it at their next check.
+    $readOnly = ['join_lookup', 'hen_notes', 'hen_photos', 'push_test', 'push_subscribe', 'push_unsubscribe',
+        'account_login', 'account_logout', 'account_register', 'password_forgot', 'password_reset', 'password_change', 'logout'];
+    if (is_int($GLOBALS['kk_household']) && !in_array($action, $readOnly, true)) {
+        central()->prepare('UPDATE households SET rev = rev + 1 WHERE id = ?')->execute([$GLOBALS['kk_household']]);
+    }
     echo json_encode(['ok' => true] + $result + ['state' => app_state()], JSON_UNESCAPED_UNICODE);
 } catch (ApiError $e) {
     http_response_code($e->status);

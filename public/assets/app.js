@@ -32,6 +32,8 @@
     share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>',
     user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>',
     heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/><path d="M8 11h2l1-2 2 4 1-2h2"/></svg>',
+    google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
+    apple: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>',
     pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   };
 
@@ -277,14 +279,14 @@
     let html;
     const r = route();
     if (!S.auth) {
-      const open = { creer: viewSignup, connexion: viewAccountLogin, rejoindre: viewJoin, 'mot-de-passe-oublie': viewForgot, 'nouveau-mot-de-passe': viewReset, foyer: viewHouseholdCreate };
+      const open = { creer: viewSignup, connexion: viewAccountLogin, inscription: viewRegister, rejoindre: viewJoin, 'mot-de-passe-oublie': viewForgot, 'nouveau-mot-de-passe': viewReset, foyer: viewHouseholdCreate };
       if (open[r.name]) html = open[r.name](r);
       else html = S.account ? viewMyHouseholds() : viewWelcome();
     } else {
       const views = {
         accueil: viewHome, oeufs: viewEggs, porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
         poules: viewHens, poule: viewHen, reglages: viewSettings, qui: viewWho, sante: viewHealth, race: viewBreed,
-        compte: viewAccount, premium: viewPremium, foyer: viewHouseholdCreate, connexion: viewAccountLogin,
+        compte: viewAccount, premium: viewPremium, foyer: viewHouseholdCreate, connexion: viewAccountLogin, inscription: viewRegister,
         'nouveau-mot-de-passe': viewReset, 'mot-de-passe-oublie': viewForgot, rejoindre: viewJoin,
       };
       html = (views[r.name] || viewHome)(r);
@@ -312,7 +314,42 @@
       <a class="btn ${last ? '' : 'primary'} big" href="#/rejoindre">${I.door} Rejoindre ma famille</a>
       <p class="muted" style="margin:-.4rem 0 0;text-align:center">Avec le code d'invitation donné par un proche.</p>
       ${S.registration ? `<a class="btn big" href="#/creer">${I.plus} Créer mon poulailler</a>` : ''}
+      ${socialButtons()}
       <a class="btn" href="#/connexion">J'ai déjà un compte</a>`;
+  }
+
+  /** « Continuer avec Google / Apple », shown only when the site has their keys. */
+  function socialButtons() {
+    const o = S.oauth || {};
+    if (!o.google && !o.apple) return '';
+    return `<div class="stack" style="gap:.6rem">
+      ${o.google ? `<a class="btn social google" href="${API}?a=oauth_start&provider=google">${I.google} Continuer avec Google</a>` : ''}
+      ${o.apple ? `<a class="btn social apple" href="${API}?a=oauth_start&provider=apple">${I.apple} Continuer avec Apple</a>` : ''}
+    </div>`;
+  }
+
+  const OAUTH_ERRORS = {
+    annule: 'Connexion annulée.',
+    expire: 'La connexion a pris trop de temps. Recommencez.',
+    email: 'Votre compte Google ou Apple ne donne pas d\'adresse e-mail vérifiée. Utilisez plutôt un e-mail et un mot de passe.',
+    ferme: 'Les inscriptions sont fermées sur ce site.',
+    indisponible: 'Cette façon de se connecter n\'est pas disponible ici.',
+    erreur: 'La connexion n\'a pas marché. Réessayez dans un instant.',
+  };
+
+  /** A family member's own account (no household needed). */
+  function viewRegister() {
+    return `
+      ${back('#/connexion', 'Connexion')}
+      <h1>Créer mon compte</h1>
+      <p class="muted" style="margin:0">${S.auth ? `Pour retrouver « ${h(S.household?.name || '')} » sur tous vos appareils, sans code.` : 'Ensuite, rejoignez votre famille avec son code d\'invitation.'}</p>
+      ${err()}
+      ${socialButtons()}
+      <form class="stack" data-form="register">
+        <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="190"></div>
+        <div class="field"><label for="pw">Mot de passe (8 caractères ou plus)</label><input id="pw" name="password" type="password" autocomplete="new-password" required minlength="8"></div>
+        <button class="btn primary big block" type="submit">Créer mon compte</button>
+      </form>`;
   }
 
   // ---------- créer un compte + un poulailler
@@ -349,6 +386,8 @@
       <h1>Créer mon poulailler</h1>
       ${S.billing ? '<p class="muted" style="margin:0">Gratuit, avec 30 jours de Premium offerts. Sans carte bancaire.</p>' : ''}
       ${err()}
+      ${S.oauth?.google || S.oauth?.apple ? `<div class="card stack"><b>Le plus rapide</b>${socialButtons()}
+        <p class="muted" style="margin:0">Puis vous créerez votre poulailler.</p></div><h2>Ou avec un e-mail</h2>` : ''}
       <form class="stack" data-form="signup">
         <h2>Votre compte</h2>
         <p class="muted" style="margin:0">Pour retrouver votre poulailler sur un autre téléphone. Seul le responsable du foyer en a besoin.</p>
@@ -380,19 +419,21 @@
   }
 
   // ---------- compte : connexion, mot de passe
-  function viewAccountLogin() {
+  function viewAccountLogin(r = {}) {
     return `
       ${back(S.auth ? '#/reglages' : '#/', 'Retour')}
-      <h1>Connexion</h1>
-      <p class="muted" style="margin:0">Espace du responsable du poulailler.</p>
+      <h1>${S.auth ? 'Mon compte' : 'Connexion'}</h1>
+      <p class="muted" style="margin:0">${S.auth ? 'Avec un compte, vous retrouvez le poulailler sur tous vos appareils, sans code.' : 'Avec votre compte KotKot.'}</p>
+      ${r.id && OAUTH_ERRORS[r.id] ? `<div class="error" role="alert">${h(OAUTH_ERRORS[r.id])}</div>` : ''}
       ${err()}
+      ${socialButtons()}
       <form class="stack" data-form="accountLogin">
         <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required></div>
         <div class="field"><label for="pw">Mot de passe</label><input id="pw" name="password" type="password" autocomplete="current-password" required></div>
         <button class="btn primary big block" type="submit">Se connecter</button>
       </form>
       <a class="btn" href="#/mot-de-passe-oublie">Mot de passe oublié ?</a>
-      ${S.registration && !S.auth ? '<a class="btn ghost" href="#/creer">Créer un compte</a>' : ''}`;
+      ${S.auth || S.registration ? '<a class="btn ghost" href="#/inscription">Pas de compte ? En créer un</a>' : ''}`;
   }
 
   let forgotMessage = '';
@@ -429,9 +470,11 @@
       <p class="muted" style="margin:0">${h(S.account.email)}</p>
       ${err()}
       <div class="stack">
-        ${list.map((x) => `<button class="tile" type="button" data-act="enterHousehold" data-id="${x.id}">${I.hen}<span class="t-title">${h(x.name)}</span></button>`).join('') || '<p class="muted">Aucun poulailler pour l\'instant.</p>'}
+        ${list.map((x) => `<button class="tile" type="button" data-act="enterHousehold" data-id="${x.id}">${I.hen}<span><span class="t-title" style="display:block">${h(x.name)}</span>
+          <span class="t-sub">${x.role === 'owner' ? 'Vous en êtes responsable' : 'Membre de la famille'}</span></span></button>`).join('') || '<p class="muted">Aucun poulailler pour l\'instant.</p>'}
       </div>
-      <a class="btn primary" href="#/foyer/nouveau">${I.plus} Créer un poulailler</a>`;
+      <a class="btn primary" href="#/rejoindre">${I.door} Rejoindre ma famille</a>
+      ${S.registration ? `<a class="btn" href="#/foyer/nouveau">${I.plus} Créer un poulailler</a>` : ''}`;
   }
 
   // ---------- rejoindre un poulailler : code d'invitation, puis qui + code familial
@@ -947,11 +990,11 @@
       <p class="muted" style="text-align:center">KotKot ${h(S.version || '')}</p>`;
   }
 
-  /** Account holder's area: link, sign-in, or "become responsible" for a V1 household. */
+  /** Account area: link to it, an invitation to create one, or "become responsible" for a V1 household. */
   function responsibleSection() {
     const hh = S.household || {};
-    if (hh.isOwner) {
-      return `<a class="btn" href="#/compte">${I.user} Mon compte et mon abonnement</a>`;
+    if (S.account) {
+      return `<a class="btn" href="#/compte">${I.user} ${hh.isOwner ? 'Mon compte et mon abonnement' : 'Mon compte'}</a>`;
     }
     if (!hh.hasOwner) {
       return `
@@ -964,13 +1007,25 @@
           <button class="btn primary" type="submit">Créer mon accès responsable</button>
         </form>`;
     }
-    return `<a class="btn" href="#/connexion">${I.user} Espace du responsable</a>`;
+    return `
+      <div class="card stack">
+        <h2 style="margin:0">Retrouver le poulailler partout</h2>
+        <p style="margin:0">Avec votre propre compte, vous ouvrez « ${h(hh.name || '')} » sur une tablette ou un nouveau téléphone sans aucun code.</p>
+        ${socialButtons()}
+        <a class="btn" href="#/inscription">${I.user} Créer mon compte avec un e-mail</a>
+        <a class="btn ghost" href="#/connexion">J'ai déjà un compte</a>
+      </div>`;
   }
 
   const fmtCode = (c) => (c ? `${c.slice(0, 4)}-${c.slice(4)}` : '—');
   const inviteUrl = () => new URL(`#/rejoindre/${S.household.inviteCode}`, location.href.split('#')[0]).href;
 
-  // ---------- mon compte (responsable)
+  /** Deleting asks for the password, or the e-mail for an account opened with Google/Apple. */
+  const confirmField = (id) => (S.account.hasPassword
+    ? `<div class="field"><label for="${id}">Votre mot de passe pour confirmer</label><input id="${id}" name="password" type="password" autocomplete="current-password" required></div>`
+    : `<div class="field"><label for="${id}">Tapez votre e-mail pour confirmer</label><input id="${id}" name="password" type="email" autocomplete="off" required></div>`);
+
+  // ---------- mon compte
   function viewAccount() {
     if (!S.account) return viewAccountLogin();
     const hh = S.household || {};
@@ -979,40 +1034,44 @@
       <h1>Mon compte</h1>
       <p class="muted" style="margin:0">${h(S.account.email)}</p>
       ${err()}
-      ${premiumCard()}
+      ${hh.isOwner ? premiumCard() : ''}
       <div class="card stack">
         <h2 style="margin:0">Mes poulaillers</h2>
         <div class="list">${S.account.households.map((x) => `<div class="stack" style="gap:.5rem">
           <b>${h(x.name)}${x.id === hh.id ? ' <span class="pill">ce téléphone</span>' : ''}</b>
+          <span class="muted">${x.role === 'owner' ? 'Vous en êtes responsable' : 'Membre de la famille'}</span>
           <div class="grid2">
             ${x.id === hh.id ? '' : `<button class="btn" type="button" data-act="enterHousehold" data-id="${x.id}">Ouvrir ici</button>`}
-            <a class="btn" href="${API}?a=export&id=${x.id}" download>Exporter</a>
+            ${x.role === 'owner' ? `<a class="btn" href="${API}?a=export&id=${x.id}" download>Exporter</a>`
+              : `<button class="btn" type="button" data-act="leaveHousehold" data-id="${x.id}">Ne plus suivre</button>`}
           </div>
-          <details><summary class="muted" style="cursor:pointer;min-height:2.8rem;padding:.6rem 0">Supprimer ce poulailler…</summary>
+          ${x.role !== 'owner' ? '' : `<details><summary class="muted" style="cursor:pointer;min-height:2.8rem;padding:.6rem 0">Supprimer ce poulailler…</summary>
             <form class="stack" data-form="householdDelete" data-id="${x.id}">
               <p style="margin:0">Tout sera effacé pour toute la famille : œufs, poules, photos, carnet. <b>C'est définitif.</b> Pensez à exporter avant.</p>
-              <div class="field"><label for="dpw${x.id}">Votre mot de passe pour confirmer</label><input id="dpw${x.id}" name="password" type="password" autocomplete="current-password" required></div>
+              ${confirmField(`dpw${x.id}`)}
               <button class="btn danger" type="submit">Supprimer « ${h(x.name)} »</button>
-            </form></details>
+            </form></details>`}
         </div>`).join('')}</div>
-        <a class="btn primary" href="#/foyer/nouveau">${I.plus} Créer un autre poulailler</a>
+        <a class="btn" href="#/rejoindre">${I.door} Rejoindre un autre poulailler</a>
+        ${S.registration || S.account.households.some((x) => x.role === 'owner') ? `<a class="btn" href="#/foyer/nouveau">${I.plus} Créer un poulailler</a>` : ''}
       </div>
-      <form class="card stack" data-form="pinReset">
+      ${hh.isOwner ? `<form class="card stack" data-form="pinReset">
         <h2 style="margin:0">Code de la famille oublié ?</h2>
         <div class="field"><label for="rp">Nouveau code (4 chiffres)</label><input id="rp" name="newPin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off"></div>
         <button class="btn" type="submit">Enregistrer le nouveau code</button>
-      </form>
+      </form>` : ''}
       <form class="card stack" data-form="passwordChange">
-        <h2 style="margin:0">Mot de passe</h2>
-        <div class="field"><label for="opw">Mot de passe actuel</label><input id="opw" name="oldPassword" type="password" autocomplete="current-password" required></div>
+        <h2 style="margin:0">${S.account.hasPassword ? 'Mot de passe' : 'Ajouter un mot de passe'}</h2>
+        ${S.account.hasPassword ? '<div class="field"><label for="opw">Mot de passe actuel</label><input id="opw" name="oldPassword" type="password" autocomplete="current-password" required></div>'
+          : '<p class="muted" style="margin:0">Vous vous connectez avec Google ou Apple. Un mot de passe permet aussi de vous connecter avec votre e-mail.</p>'}
         <div class="field"><label for="npw">Nouveau mot de passe</label><input id="npw" name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div>
         <button class="btn" type="submit">Changer le mot de passe</button>
       </form>
       <button class="btn" type="button" data-act="accountLogout">Se déconnecter du compte</button>
       <details class="card"><summary style="cursor:pointer;font-weight:700;min-height:2.8rem">Supprimer mon compte…</summary>
         <form class="stack" data-form="accountDelete" style="margin-top:.6rem">
-          <p style="margin:0">Votre compte et <b>tous vos poulaillers</b> seront effacés. C'est définitif.</p>
-          <div class="field"><label for="apw">Votre mot de passe pour confirmer</label><input id="apw" name="password" type="password" autocomplete="current-password" required></div>
+          <p style="margin:0">Votre compte sera effacé, ainsi que <b>les poulaillers dont vous êtes responsable</b>. C'est définitif.</p>
+          ${confirmField('apw')}
           <button class="btn danger" type="submit">Supprimer mon compte</button>
         </form></details>`;
   }
@@ -1257,6 +1316,10 @@
       go('#/');
     },
     async accountLogout() { await call('account_logout', {}); toast('Déconnecté du compte'); go(S.auth ? '#/reglages' : '#/'); },
+    async leaveHousehold(el) {
+      if (!confirm('Ne plus suivre ce poulailler avec votre compte ? Il continue d\'exister pour la famille.')) return;
+      await call('membership_leave', { householdId: Number(el.dataset.id) }); toast('C\'est fait'); render();
+    },
     async enterHousehold(el) { await call('household_enter', { householdId: Number(el.dataset.id) }); notesFor = null; go('#/'); },
     async shareInvite() {
       const text = `Rejoins notre poulailler « ${S.household.name} » sur KotKot ! Code d'invitation : ${fmtCode(S.household.inviteCode)}`;
@@ -1336,6 +1399,12 @@
 
   // ------------------------------------------------------------------ formulaires
   const forms = {
+    async register(f, fd) {
+      try {
+        const data = await post('account_register', { email: fd.get('email'), password: fd.get('password') });
+        setState(data.state); toast('Compte créé'); go(S.auth ? '#/compte' : '#/');
+      } catch (e) { showError(e.status === 0 ? 'Pas de connexion internet.' : e.message); }
+    },
     async signup(f, fd) {
       let body;
       try { body = signupPayload(fd); } catch (e) { return showError(e.message); }
@@ -1444,6 +1513,17 @@
   window.addEventListener('offline', () => setOnline(false));
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { flush(); refresh(); } });
   setInterval(() => { if (!document.hidden) refresh(); }, 60000);
+
+  // Live sync: every few seconds, a tiny question « anything new? »; the full update only if so.
+  setInterval(async () => {
+    if (document.hidden || !S.auth || !online || outbox.length || flushing) return;
+    try {
+      const res = await fetch(`${API}?a=rev`, { credentials: 'same-origin', cache: 'no-store' });
+      const data = await res.json();
+      if (data.ok && data.rev !== S.household?.rev) refresh();
+      else if (res.status === 401) refresh();
+    } catch { /* hors ligne : on réessaiera */ }
+  }, 5000);
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
   render();
   refresh().then(flush);

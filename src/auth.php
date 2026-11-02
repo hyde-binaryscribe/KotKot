@@ -99,7 +99,7 @@ function current_account(bool $reset = false): ?array
         return $cache = null;
     }
     $hash = hash('sha256', $token);
-    $st = central()->prepare('SELECT a.id, a.email, s.last_seen FROM account_sessions s
+    $st = central()->prepare('SELECT a.id, a.email, a.has_password, s.last_seen FROM account_sessions s
         JOIN accounts a ON a.id = s.account_id WHERE s.token_hash = ?');
     $st->execute([$hash]);
     $row = $st->fetch();
@@ -111,7 +111,7 @@ function current_account(bool $reset = false): ?array
         central()->prepare('UPDATE account_sessions SET last_seen = ? WHERE token_hash = ?')->execute([now_ts(), $hash]);
         set_cookie(KK_ACCOUNT_COOKIE, $token, 30 * 86400);
     }
-    return $cache = ['id' => (int) $row['id'], 'email' => $row['email'], 'hash' => $hash];
+    return $cache = ['id' => (int) $row['id'], 'email' => $row['email'], 'hasPassword' => (bool) $row['has_password'], 'hash' => $hash];
 }
 
 function create_account_session(int $accountId): void
@@ -134,11 +134,19 @@ function end_account_session(): void
     current_account(true);
 }
 
+/** Households this account belongs to: as their responsible adult ("owner") or as a family member. */
 function account_households(int $accountId): array
 {
-    $st = central()->prepare('SELECT id, name FROM households WHERE owner_id = ? AND deleted_at IS NULL ORDER BY id');
+    $st = central()->prepare('SELECT h.id, h.name, m.role, m.person_id FROM memberships m
+        JOIN households h ON h.id = m.household_id
+        WHERE m.account_id = ? AND h.deleted_at IS NULL ORDER BY h.id');
     $st->execute([$accountId]);
-    return array_map(fn ($h) => ['id' => (int) $h['id'], 'name' => $h['name']], $st->fetchAll());
+    return array_map(fn ($h) => [
+        'id' => (int) $h['id'],
+        'name' => $h['name'],
+        'role' => $h['role'],
+        'personId' => $h['person_id'] !== null ? (int) $h['person_id'] : null,
+    ], $st->fetchAll());
 }
 
 function valid_email(mixed $v): bool

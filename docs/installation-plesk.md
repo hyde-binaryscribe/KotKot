@@ -137,6 +137,42 @@ C'est elle qui envoie les rappels sur les téléphones (porte restée ouverte, s
 
 ---
 
+## 6 ter. « Continuer avec Google » et « Continuer avec Apple » (facultatif)
+
+Chacun pourra créer son compte et se connecter en un clic, sans mot de passe. Les boutons n'apparaissent que lorsque les clés sont dans `config.php`. Vous pouvez activer l'un sans l'autre.
+
+### Google (gratuit, 10 minutes)
+
+1. Allez sur **console.cloud.google.com** avec votre compte Google, créez un projet (par ex. « KotKot »).
+2. **API et services** › **Écran de consentement OAuth** : type **Externe**, nom de l'appli « KotKot », votre e-mail d'assistance, le logo si vous voulez. Pas besoin d'ajouter d'autorisations particulières (e-mail et profil suffisent). Puis **Publier l'application** (statut « En production »).
+3. **API et services** › **Identifiants** › **Créer des identifiants** › **ID client OAuth** :
+   - Type : **Application Web** ;
+   - **URI de redirection autorisés** : `https://poules.exemple.fr/oauth-google.php`.
+4. Copiez l'**ID client** et le **Code secret du client** dans `config.php` :
+   ```php
+   'google_client_id'     => '…apps.googleusercontent.com',
+   'google_client_secret' => 'GOCSPX-…',
+   ```
+
+### Apple (compte Apple Developer, 99 € par an)
+
+1. Sur **developer.apple.com** › **Certificates, Identifiers & Profiles** :
+   - **Identifiers** › **App IDs** : créez-en un (par ex. `fr.exemple.kotkot.app`) avec la case **Sign In with Apple**.
+   - **Identifiers** › **Services IDs** : créez-en un (par ex. `fr.exemple.kotkot`), cochez **Sign In with Apple** › **Configure** : domaine `poules.exemple.fr`, **Return URL** `https://poules.exemple.fr/oauth-apple.php`.
+   - **Keys** : créez une clé avec **Sign In with Apple**, téléchargez le fichier `AuthKey_XXXXXXXXXX.p8` (une seule fois possible !) et notez son **Key ID**.
+2. Envoyez le fichier `.p8` dans le dossier **`data/`** de KotKot (jamais dans `public/`).
+3. Dans `config.php` :
+   ```php
+   'apple_client_id'   => 'fr.exemple.kotkot',   // le Services ID
+   'apple_team_id'     => 'ABCDE12345',          // en haut à droite du compte développeur
+   'apple_key_id'      => 'XXXXXXXXXX',
+   'apple_private_key' => __DIR__ . '/data/AuthKey_XXXXXXXXXX.p8',
+   ```
+
+> Avec Apple, la personne peut choisir de **masquer son e-mail** : KotKot reçoit alors une adresse `…@privaterelay.appleid.com`. Pour que les e-mails « mot de passe oublié » y arrivent, déclarez votre adresse d'envoi (`mail_from`) dans **Services ID › Sign In with Apple › Email Sources**.
+
+---
+
 ## 7. Premier lancement
 
 1. Sur votre téléphone, ouvrez **`https://poules.exemple.fr`**.
@@ -226,4 +262,5 @@ Les téléphones déjà connectés le restent ; seuls les nouveaux devront taper
 - [ ] Appli installée sur les téléphones
 - [ ] `config.php` créé (adresse du site, expéditeur des e-mails)
 - [ ] Tâche planifiée `tools/cron.php` toutes les 5 minutes
+- [ ] (Facultatif) Clés Google et/ou Apple dans `config.php`
 - [ ] Sauvegarde hebdomadaire programmée

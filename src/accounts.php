@@ -25,6 +25,49 @@ function require_owner(int $householdId): array
     return $h;
 }
 
+/**
+ * Links an account to a household (and to its person there). The owner link is
+ * created with the household; family members get theirs by signing in on a phone
+ * that is already in the household, or by joining it while signed in.
+ */
+function link_membership(int $accountId, int $householdId, ?int $personId, string $role = 'member'): void
+{
+    central()->prepare('INSERT INTO memberships (account_id, household_id, person_id, role, created_at) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(account_id, household_id) DO UPDATE SET
+            person_id = COALESCE(excluded.person_id, memberships.person_id),
+            role = CASE WHEN excluded.role = \'owner\' THEN \'owner\' ELSE memberships.role END')
+        ->execute([$accountId, $householdId, $personId, $role, now_ts()]);
+}
+
+/** Opens a household on this phone for an account, as its person (no family code needed). */
+function enter_household(array $membership, mixed $personId = null): void
+{
+    if (current_device() !== null) {
+        forget_device();
+    }
+    use_household($membership['id']);
+    $pid = person_or_null($personId) ?? person_or_null($membership['personId']) ?? (people()[0]['id'] ?? null);
+    create_device($membership['id'], $pid);
+}
+
+/**
+ * After any sign-in (password, Google, Apple): a phone already in a household
+ * links the account to it; otherwise an account with a single household opens it.
+ * $device is given when the browser could not send its cookie (Apple's form_post).
+ */
+function after_sign_in(int $accountId, ?array $device = null): void
+{
+    $device ??= current_device();
+    if ($device !== null) {
+        link_membership($accountId, $device['household'], $device['person']['id'] ?? null);
+        return;
+    }
+    $households = account_households($accountId);
+    if (count($households) === 1) {
+        enter_household($households[0]);
+    }
+}
+
 function new_household(string $name, ?int $ownerId): int
 {
     $trial = billing_enabled() ? now_ts() + (int) config('trial_days', 30) * 86400 : 0;
@@ -84,6 +127,7 @@ function action_account_create(array $in): array
     $hid = new_household($name, $accountId);
     use_household($hid);
     $first = setup_household($in);
+    link_membership($accountId, $hid, $first, 'owner');
     create_account_session($accountId);
     create_device($hid, $first);
     register_failure($key); // counts sign-ups: 5 from one place, then a pause
@@ -101,7 +145,42 @@ function action_household_create(array $in): array
     $hid = new_household($name, $a['id']);
     use_household($hid);
     $first = setup_household($in);
+    link_membership($a['id'], $hid, $first, 'owner');
+    if (current_device() !== null) {
+        forget_device();
+    }
     create_device($hid, $first);
+    return [];
+}
+
+/** An account without household: a family member who wants to find the coop on every device. */
+function action_account_register(array $in): array
+{
+    if (!config('registration', true) && current_device() === null) {
+        throw new ApiError('Les inscriptions sont fermées sur ce site.', 403);
+    }
+    $key = 'signup:' . client_ip();
+    if (($wait = check_lock($key)) !== null) {
+        throw new ApiError('Trop de créations de compte. Réessayez dans ' . max(1, (int) ceil($wait / 60)) . ' min.', 429);
+    }
+    $email = trim((string) ($in['email'] ?? ''));
+    if (!valid_email($email)) {
+        throw new ApiError('Cette adresse e-mail ne semble pas correcte.');
+    }
+    if (!valid_password($in['password'] ?? null)) {
+        throw new ApiError('Le mot de passe doit faire au moins 8 caractères.');
+    }
+    $st = central()->prepare('SELECT 1 FROM accounts WHERE email = ?');
+    $st->execute([$email]);
+    if ($st->fetchColumn()) {
+        throw new ApiError('Un compte existe déjà avec cet e-mail. Connectez-vous.', 409);
+    }
+    central()->prepare('INSERT INTO accounts (email, password_hash, created_at) VALUES (?, ?, ?)')
+        ->execute([$email, password_hash($in['password'], PASSWORD_DEFAULT), now_ts()]);
+    $accountId = (int) central()->lastInsertId();
+    create_account_session($accountId);
+    after_sign_in($accountId);
+    register_failure($key);
     return [];
 }
 
@@ -129,12 +208,7 @@ function action_account_login(array $in): array
             ->execute([password_hash($in['password'], PASSWORD_DEFAULT), $row['id']]);
     }
     create_account_session((int) $row['id']);
-    // only one household and this phone isn't in it yet: go straight in
-    $households = account_households((int) $row['id']);
-    if (current_device() === null && count($households) === 1) {
-        use_household($households[0]['id']);
-        create_device($households[0]['id'], people()[0]['id'] ?? null);
-    }
+    after_sign_in((int) $row['id']);
     return [];
 }
 
@@ -144,16 +218,31 @@ function action_account_logout(): array
     return [];
 }
 
-/** The account holder opens one of their households on this phone (no family code needed). */
+/** An account opens one of its households on this phone (no family code needed). */
 function action_household_enter(array $in): array
 {
-    $h = require_owner((int) ($in['householdId'] ?? 0));
-    use_household((int) $h['id']);
-    $pid = person_or_null($in['personId'] ?? null) ?? (people()[0]['id'] ?? null);
-    if (current_device() !== null) {
-        forget_device();
+    $a = require_account();
+    $id = (int) ($in['householdId'] ?? 0);
+    foreach (account_households($a['id']) as $m) {
+        if ($m['id'] === $id) {
+            enter_household($m, $in['personId'] ?? null);
+            return [];
+        }
     }
-    create_device((int) $h['id'], $pid);
+    throw new ApiError('Ce poulailler n\'est pas lié à votre compte.', 403);
+}
+
+/** A family member's account stops following a household (the household itself stays). */
+function action_membership_leave(array $in): array
+{
+    $a = require_account();
+    $id = (int) ($in['householdId'] ?? 0);
+    $st = central()->prepare('SELECT owner_id FROM households WHERE id = ?');
+    $st->execute([$id]);
+    if ((int) $st->fetchColumn() === $a['id']) {
+        throw new ApiError('Vous êtes responsable de ce poulailler : supprimez-le plutôt, ou gardez-le.', 409);
+    }
+    central()->prepare('DELETE FROM memberships WHERE account_id = ? AND household_id = ?')->execute([$a['id'], $id]);
     return [];
 }
 
@@ -210,7 +299,11 @@ function action_join_login(array $in): array
     if (current_device() !== null) {
         forget_device();
     }
-    create_device($hid, person_or_null($in['personId'] ?? null));
+    $personId = person_or_null($in['personId'] ?? null);
+    create_device($hid, $personId);
+    if (($a = current_account()) !== null) {
+        link_membership($a['id'], $hid, $personId);
+    }
     return [];
 }
 
@@ -278,6 +371,7 @@ function action_household_claim(array $in): array
     $trial = billing_enabled() ? now_ts() + (int) config('trial_days', 30) * 86400 : 0;
     central()->prepare('UPDATE households SET owner_id = ?, trial_until = MAX(trial_until, ?) WHERE id = ? AND owner_id IS NULL')
         ->execute([$accountId, $trial, $h['id']]);
+    link_membership($accountId, (int) $h['id'], me_id(), 'owner');
     create_account_session($accountId);
     return [];
 }
@@ -332,7 +426,7 @@ function action_password_reset(array $in): array
         throw new ApiError('Ce lien a expiré. Refaites une demande.', 410);
     }
     $accountId = (int) $accountId;
-    central()->prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')
+    central()->prepare('UPDATE accounts SET password_hash = ?, has_password = 1 WHERE id = ?')
         ->execute([password_hash($in['password'], PASSWORD_DEFAULT), $accountId]);
     central()->prepare('DELETE FROM password_resets WHERE account_id = ?')->execute([$accountId]);
     central()->prepare('DELETE FROM account_sessions WHERE account_id = ?')->execute([$accountId]);
@@ -343,15 +437,18 @@ function action_password_reset(array $in): array
 function action_password_change(array $in): array
 {
     $a = require_account();
-    $st = central()->prepare('SELECT password_hash FROM accounts WHERE id = ?');
-    $st->execute([$a['id']]);
-    if (!password_verify((string) ($in['oldPassword'] ?? ''), (string) $st->fetchColumn())) {
-        throw new ApiError('L\'ancien mot de passe n\'est pas le bon.', 403);
+    // an account opened with Google or Apple may set its first password without an old one
+    if ($a['hasPassword']) {
+        $st = central()->prepare('SELECT password_hash FROM accounts WHERE id = ?');
+        $st->execute([$a['id']]);
+        if (!password_verify((string) ($in['oldPassword'] ?? ''), (string) $st->fetchColumn())) {
+            throw new ApiError('L\'ancien mot de passe n\'est pas le bon.', 403);
+        }
     }
     if (!valid_password($in['newPassword'] ?? null)) {
         throw new ApiError('Le nouveau mot de passe doit faire au moins 8 caractères.');
     }
-    central()->prepare('UPDATE accounts SET password_hash = ? WHERE id = ?')
+    central()->prepare('UPDATE accounts SET password_hash = ?, has_password = 1 WHERE id = ?')
         ->execute([password_hash($in['newPassword'], PASSWORD_DEFAULT), $a['id']]);
     central()->prepare('DELETE FROM account_sessions WHERE account_id = ? AND token_hash != ?')->execute([$a['id'], $a['hash']]);
     return [];
@@ -359,6 +456,13 @@ function action_password_change(array $in): array
 
 function check_account_password(array $a, mixed $password): void
 {
+    if (!$a['hasPassword']) {
+        // opened with Google or Apple, no password: typing the e-mail address confirms
+        if (mb_strtolower(trim((string) $password)) !== mb_strtolower($a['email'])) {
+            throw new ApiError('Tapez votre adresse e-mail pour confirmer.', 403);
+        }
+        return;
+    }
     $st = central()->prepare('SELECT password_hash FROM accounts WHERE id = ?');
     $st->execute([$a['id']]);
     if (!password_verify((string) $password, (string) $st->fetchColumn())) {
@@ -414,6 +518,7 @@ function delete_household(int $householdId): void
     central()->prepare('UPDATE households SET deleted_at = ?, invite_code = NULL, owner_id = NULL, name = ? WHERE id = ?')
         ->execute([now_ts(), '(supprimé)', $householdId]);
     central()->prepare('DELETE FROM push_subscriptions WHERE household_id = ?')->execute([$householdId]);
+    central()->prepare('DELETE FROM memberships WHERE household_id = ?')->execute([$householdId]);
     central()->prepare('DELETE FROM notifications_sent WHERE household_id = ?')->execute([$householdId]);
     remove_household_files($householdId);
 }
@@ -437,8 +542,11 @@ function action_account_delete(array $in): array
 {
     $a = require_account();
     check_account_password($a, $in['password'] ?? '');
+    // households this account is responsible for are deleted; the others simply lose this member
     foreach (account_households($a['id']) as $h) {
-        delete_household($h['id']);
+        if ($h['role'] === 'owner') {
+            delete_household($h['id']);
+        }
     }
     central()->prepare('DELETE FROM accounts WHERE id = ?')->execute([$a['id']]);
     set_cookie(KK_ACCOUNT_COOKIE, '', 0);

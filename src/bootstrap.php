@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const KK_VERSION = '2.0.1';
+const KK_VERSION = '2.1.0';
 define('KK_ROOT', dirname(__DIR__));
 define('KK_DATA', rtrim(getenv('KOTKOT_DATA') ?: KK_ROOT . '/data', '/'));
 
@@ -111,6 +111,43 @@ function migrate_central(PDO $pdo): void
             PRIMARY KEY (household_id, key)
         );
         PRAGMA user_version = 1;
+        SQL);
+        $version = 1;
+    }
+    if ($version < 2) {
+        // V2.1: everyone can have an account (e-mail, Google, Apple) linked to their person,
+        // and a change counter per household for live sync.
+        $pdo->exec(<<<SQL
+        ALTER TABLE accounts ADD COLUMN has_password INTEGER NOT NULL DEFAULT 1;
+        ALTER TABLE households ADD COLUMN rev INTEGER NOT NULL DEFAULT 0;
+        CREATE TABLE memberships (
+            account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            household_id INTEGER NOT NULL REFERENCES households(id) ON DELETE CASCADE,
+            person_id INTEGER,
+            role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (account_id, household_id)
+        );
+        INSERT INTO memberships (account_id, household_id, role, created_at)
+            SELECT owner_id, id, 'owner', created_at FROM households WHERE owner_id IS NOT NULL AND deleted_at IS NULL;
+        CREATE TABLE account_identities (
+            provider TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            email TEXT,
+            created_at INTEGER NOT NULL,
+            PRIMARY KEY (provider, subject)
+        );
+        CREATE TABLE oauth_states (
+            state TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            nonce TEXT NOT NULL,
+            verifier TEXT NOT NULL,
+            device_household INTEGER,
+            device_hash TEXT,
+            created_at INTEGER NOT NULL
+        );
+        PRAGMA user_version = 2;
         SQL);
     }
 }

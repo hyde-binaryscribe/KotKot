@@ -15,8 +15,10 @@ function app_state(): array
         'registration' => (bool) config('registration', true),
         'account' => $account ? [
             'email' => $account['email'],
+            'hasPassword' => $account['hasPassword'],
             'households' => account_households($account['id']),
         ] : null,
+        'oauth' => array_map(fn ($p) => $p['name'], oauth_providers()),
         'auth' => $device !== null,
     ];
     if ($device === null) {
@@ -32,6 +34,7 @@ function app_state(): array
         'inviteCode' => $h['invite_code'],
         'hasOwner' => $h['owner_id'] !== null,
         'isOwner' => $account !== null && (int) $h['owner_id'] === $account['id'],
+        'rev' => (int) $h['rev'],
         'premium' => is_premium($h),
         'trial' => billing_enabled() && (int) $h['premium_until'] <= now_ts() && (int) $h['trial_until'] > now_ts(),
         'premiumUntil' => billing_enabled() && $premiumUntil > 0 ? $premiumUntil : null,

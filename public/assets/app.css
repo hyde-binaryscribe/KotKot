@@ -238,6 +238,12 @@ details summary::-webkit-details-marker { display: none; }
   .album { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
 }
 
+/* « Continuer avec Google / Apple » (couleurs demandées par Google et Apple) */
+.btn.social { border-width: 2px; }
+.btn.social svg { width: 1.4rem; height: 1.4rem; }
+.btn.google { background: #FFFFFF; color: #1F1F1F; border-color: #747775; }
+.btn.apple { background: #000000; color: #FFFFFF; border-color: #000000; }
+
 /* ---------- forms ---------- */
 .field { display: flex; flex-direction: column; gap: .35rem; }
 .field label, .field .lab { font-weight: 700; }
