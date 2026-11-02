@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const KK_VERSION = '2.3.0';
+const KK_VERSION = '2.4.0';
 define('KK_ROOT', dirname(__DIR__));
 define('KK_DATA', rtrim(getenv('KOTKOT_DATA') ?: KK_ROOT . '/data', '/'));
 
@@ -372,6 +372,16 @@ function migrate_household(PDO $pdo): void
         CREATE INDEX eggs_day_species ON eggs(day, species);
         PRAGMA user_version = 3;
         SQL);
+        $version = 3;
+    }
+    if ($version < 4) {
+        // V2.4: egg quality — good or bad, the criteria noticed, a comment.
+        $pdo->exec(<<<SQL
+        ALTER TABLE eggs ADD COLUMN quality TEXT NOT NULL DEFAULT 'bon';
+        ALTER TABLE eggs ADD COLUMN defects TEXT NOT NULL DEFAULT '';
+        ALTER TABLE eggs ADD COLUMN note TEXT NOT NULL DEFAULT '';
+        PRAGMA user_version = 4;
+        SQL);
     }
 }
 
@@ -469,6 +479,9 @@ const FREE_PHOTOS_PER_HEN = 3;
 
 /** Kinds of poultry. Keys are stored; labels are the app's. */
 const SPECIES = ['poule', 'caille', 'canard', 'oie', 'dinde', 'pintade', 'autre'];
+
+/** What one notices on an egg. Some make it bad, some are just worth noting (double yolk). */
+const EGG_CRITERIA = ['fele', 'casse', 'sale', 'molle', 'sans', 'deforme', 'sang', 'petit', 'gros', 'double'];
 
 function species(mixed $v): string
 {

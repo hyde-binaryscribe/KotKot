@@ -162,6 +162,28 @@ check('−1 on hens never takes a quail egg', $r['state']['eggs']['todayBySpecie
 req('lea', 'egg_set', ['day' => $d3, 'count' => 10, 'species' => 'caille']);
 [, $m] = req('lea', 'egg_month', ['month' => $month3]);
 check('calendar: per kind and total', $m['month']['bySpecies'][$d3] === ['caille' => 10, 'poule' => 6] && $m['month']['days'][$d3] === 16);
+echo "Qualité des œufs\n";
+[$s] = req('lea', 'egg_eval', ['quality' => 'bon', 'clientId' => 'eval-vide-01']);
+check('a good egg needs a criterion or a comment', $s === 400);
+[, $r] = req('lea', 'egg_eval', ['quality' => 'mauvais', 'defects' => ['fele', 'sale', 'inventé'], 'note' => 'Trouvé dans la paille', 'clientId' => 'eval-0001-aaaa']);
+$q = $r['state']['eggs']['quality'];
+check('a cracked dirty egg: counted bad, criteria kept, unknown one dropped', $r['state']['eggs']['todayBad'] === 1
+    && $q['recent'][0]['defects'] === ['fele', 'sale'] && $q['recent'][0]['note'] === 'Trouvé dans la paille' && $q['recent'][0]['who'] === 'Léa');
+check('…still a laid egg in the total', $r['state']['eggs']['today'] === 3);
+req('lea', 'egg', ['delta' => 1, 'species' => 'poule', 'clientId' => 'egg-bon-0001']);
+[, $r] = req('lea', 'egg_eval', ['quality' => 'mauvais', 'defects' => ['molle'], 'recount' => true, 'clientId' => 'eval-0002-bbbb']);
+check('« already counted »: a good egg becomes bad, total unchanged', $r['state']['eggs']['todayBad'] === 2 && $r['state']['eggs']['today'] === 4
+    && $r['state']['eggs']['todayGoodBySpecies']['poule'] === 0);
+[$s] = req('lea', 'egg_eval', ['quality' => 'mauvais', 'recount' => true, 'species' => 'oie', 'clientId' => 'eval-0003-cccc']);
+check('cannot re-classify a good egg that was never counted', $s === 400);
+[, $r] = req('lea', 'egg_undo', ['clientId' => 'eval-0002-bbbb']);
+check('Annuler on a re-classification puts the good egg back', $r['state']['eggs']['todayBad'] === 1 && $r['state']['eggs']['todayGoodBySpecies']['poule'] === 1);
+[, $r] = req('lea', 'egg_eval', ['quality' => 'bon', 'defects' => ['double'], 'note' => 'Énorme !', 'clientId' => 'eval-0004-dddd']);
+check('a good double-yolk egg with a comment', $r['state']['eggs']['todayBad'] === 1 && $r['state']['eggs']['quality']['criteria']['double'] === 1);
+check('30-day count of good and bad eggs', $r['state']['eggs']['quality']['bad30'] === 1 && $r['state']['eggs']['quality']['good30'] === $r['state']['eggs']['last30'] - 1);
+[$s] = req('lea', 'egg_set', ['day' => (new DateTimeImmutable('today', $tz))->format('Y-m-d'), 'count' => 0, 'species' => 'poule']);
+check('the day total cannot go under the bad eggs', $s === 400);
+
 req('lea', 'hen_remove', ['id' => $quail['id']]);
 req('lea', 'hen_remove', ['id' => array_values(array_filter($r['state']['hens'], fn ($h) => $h['name'] === 'Inconnue'))[0]['id']]);
 upload_photo('lea', $henId, '2026-09-01');
@@ -192,7 +214,7 @@ $mamieId = $r['join']['people'][1]['id'];
 [$s] = req('mamie', 'join_login', ['code' => $invite, 'personId' => $mamieId, 'pin' => '9999']);
 check('wrong family code refused', $s === 403);
 [$s, $r] = req('mamie', 'join_login', ['code' => $invite, 'personId' => $mamieId, 'pin' => '1234']);
-check('Mamie is in, and sees the same eggs', $s === 200 && $r['state']['me']['name'] === 'Mamie' && $r['state']['eggs']['today'] === 2);
+check('Mamie is in, and sees the same eggs', $s === 200 && $r['state']['me']['name'] === 'Mamie' && $r['state']['eggs']['today'] === 5);
 check('Mamie has no account powers', $r['state']['account'] === null && $r['state']['household']['isOwner'] === false);
 [$s] = http('mamie', 'GET', "api.php?a=export&id={$r['state']['household']['id']}");
 check('only the account holder can export', $s === 401);

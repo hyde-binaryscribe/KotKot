@@ -125,7 +125,7 @@ function action_egg(array $in): array
     $day = local_day($at);
     $species = species($in['species'] ?? null);
     if ($delta === -1) {
-        $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ? AND species = ?');
+        $st = db()->prepare("SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ? AND species = ? AND quality = 'bon'");
         $st->execute([$day, $species]);
         if ((int) $st->fetchColumn() <= 0) {
             return []; // never below zero
@@ -172,9 +172,15 @@ function action_egg_set(array $in): array
         }
     }
     $species = species($in['species'] ?? null);
-    $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ? AND species = ?');
+    $st = db()->prepare("SELECT COALESCE(SUM(CASE WHEN quality = 'bon' THEN delta END), 0), COALESCE(SUM(CASE WHEN quality != 'bon' THEN delta END), 0)
+        FROM eggs WHERE day = ? AND species = ?");
     $st->execute([$day, $species]);
-    $delta = $count - max(0, (int) $st->fetchColumn());
+    [$good, $bad] = array_map('intval', $st->fetch(PDO::FETCH_NUM));
+    if ($count < $bad) {
+        throw new ApiError("Ce jour-là, $bad œuf" . ($bad > 1 ? 's ont été notés mauvais' : ' a été noté mauvais') . ' : le total ne peut pas être plus petit.');
+    }
+    // the count is the day's total; bad eggs stay as they are, the difference is in good eggs
+    $delta = $count - $bad - max(0, $good);
     if ($delta !== 0) {
         db()->prepare('INSERT INTO eggs (client_id, day, delta, person_id, created_at, species) VALUES (?, ?, ?, ?, ?, ?)')
             ->execute([$cid, $day, $delta, me_id(), now_ts(), $species]);
@@ -187,17 +193,23 @@ function action_egg_month(array $in): array
 {
     require_auth();
     $month = is_string($in['month'] ?? null) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $in['month']) ? $in['month'] : now()->format('Y-m');
-    $st = db()->prepare('SELECT day, species, SUM(delta) AS n FROM eggs WHERE day LIKE ? GROUP BY day, species');
+    $st = db()->prepare('SELECT day, species, quality, SUM(delta) AS n FROM eggs WHERE day LIKE ? GROUP BY day, species, quality');
     $st->execute([$month . '-%']);
     $days = [];
     $bySpecies = [];
+    $bad = [];
     foreach ($st->fetchAll() as $r) {
-        if ((int) $r['n'] > 0) {
-            $days[$r['day']] = ($days[$r['day']] ?? 0) + (int) $r['n'];
-            $bySpecies[$r['day']][$r['species']] = (int) $r['n'];
+        $n = (int) $r['n'];
+        if ($n > 0) {
+            $days[$r['day']] = ($days[$r['day']] ?? 0) + $n;
+            $bySpecies[$r['day']][$r['species']] = ($bySpecies[$r['day']][$r['species']] ?? 0) + $n;
+            if ($r['quality'] !== 'bon') {
+                $bad[$r['day']] = ($bad[$r['day']] ?? 0) + $n;
+            }
         }
     }
-    return ['month' => ['month' => $month, 'days' => $days, 'bySpecies' => $bySpecies, 'total' => array_sum($days)]];
+    return ['month' => ['month' => $month, 'days' => $days, 'bySpecies' => $bySpecies, 'bad' => $bad,
+        'badTotal' => array_sum($bad), 'total' => array_sum($days)]];
 }
 
 function action_egg_undo(array $in): array
@@ -205,8 +217,49 @@ function action_egg_undo(array $in): array
     require_auth();
     $cid = client_id($in['clientId'] ?? null);
     if ($cid !== null) {
-        db()->prepare('DELETE FROM eggs WHERE client_id = ?')->execute([$cid]);
+        // an evaluation that re-classified a counted egg has a second line « <id>-r »
+        db()->prepare('DELETE FROM eggs WHERE client_id IN (?, ?)')->execute([$cid, $cid . '-r']);
     }
+    return [];
+}
+
+/**
+ * Evaluates one egg: good or bad, criteria, comment. A new egg by default;
+ * with « recount », an egg already counted as good today becomes this evaluation.
+ */
+function action_egg_eval(array $in): array
+{
+    require_auth();
+    $quality = ($in['quality'] ?? 'mauvais') === 'bon' ? 'bon' : 'mauvais';
+    $defects = array_values(array_unique(array_filter((array) ($in['defects'] ?? []), fn ($d) => in_array($d, EGG_CRITERIA, true))));
+    $note = trim(mb_substr(is_string($in['note'] ?? null) ? $in['note'] : '', 0, 500));
+    if ($quality === 'bon' && !$defects && $note === '') {
+        throw new ApiError('Cochez au moins un critère ou écrivez un commentaire.');
+    }
+    $species = species($in['species'] ?? null);
+    $at = client_time($in['at'] ?? null);
+    $day = isset($in['day']) ? egg_day($in['day']) : local_day($at);
+    $cid = client_id($in['clientId'] ?? null) ?? bin2hex(random_bytes(8));
+    $st = db()->prepare('SELECT 1 FROM eggs WHERE client_id = ?');
+    $st->execute([$cid]);
+    if ($st->fetchColumn()) {
+        return []; // already received
+    }
+    $pdo = db();
+    $pdo->beginTransaction();
+    if (!empty($in['recount'])) {
+        $st = $pdo->prepare("SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ? AND species = ? AND quality = 'bon'");
+        $st->execute([$day, $species]);
+        if ((int) $st->fetchColumn() <= 0) {
+            $pdo->rollBack();
+            throw new ApiError('Aucun bon œuf compté ce jour-là à requalifier : décochez « déjà compté ».');
+        }
+        $pdo->prepare("INSERT INTO eggs (client_id, day, delta, person_id, created_at, species, quality) VALUES (?, ?, -1, ?, ?, ?, 'bon')")
+            ->execute([$cid . '-r', $day, me_id(), $at, $species]);
+    }
+    $pdo->prepare('INSERT INTO eggs (client_id, day, delta, person_id, created_at, species, quality, defects, note) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)')
+        ->execute([$cid, $day, me_id(), $at, $species, $quality, implode(',', $defects), $note]);
+    $pdo->commit();
     return [];
 }
 

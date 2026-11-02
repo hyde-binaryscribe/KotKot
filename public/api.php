@@ -87,6 +87,7 @@ $routes = [
     'egg' => 'action_egg',
     'egg_undo' => 'action_egg_undo',
     'egg_set' => 'action_egg_set',
+    'egg_eval' => 'action_egg_eval',
     'egg_month' => 'action_egg_month',
     'door' => 'action_door',
     'door_undo' => 'action_door_undo',

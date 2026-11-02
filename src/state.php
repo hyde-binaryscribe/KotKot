@@ -134,18 +134,71 @@ function eggs_state(DateTimeImmutable $now): array
         $d = $now->modify("-$i days")->format('Y-m-d');
         $last14[] = ['day' => $d, 'count' => $byDay[$d] ?? 0];
     }
-    $st = db()->prepare('SELECT species, SUM(delta) AS n FROM eggs WHERE day = ? GROUP BY species');
+    $st = db()->prepare('SELECT species, quality, SUM(delta) AS n FROM eggs WHERE day = ? GROUP BY species, quality');
     $st->execute([$today]);
     $todayBySpecies = [];
+    $todayGoodBySpecies = [];
+    $todayBad = 0;
     foreach ($st->fetchAll() as $r) {
-        $todayBySpecies[$r['species']] = max(0, (int) $r['n']);
+        $n = max(0, (int) $r['n']);
+        $todayBySpecies[$r['species']] = ($todayBySpecies[$r['species']] ?? 0) + $n;
+        if ($r['quality'] === 'bon') {
+            $todayGoodBySpecies[$r['species']] = $n;
+        } else {
+            $todayBad += $n;
+        }
     }
     return [
         'today' => $byDay[$today] ?? 0,
         'todayBySpecies' => $todayBySpecies,
+        'todayGoodBySpecies' => $todayGoodBySpecies,
+        'todayBad' => $todayBad,
+        'quality' => egg_quality($now),
         'last7' => $sum(7),
         'last30' => $sum(30),
         'days' => $last14,
+    ];
+}
+
+/** Good and bad eggs over 30 days, the criteria seen most, the latest evaluations. */
+function egg_quality(DateTimeImmutable $now): array
+{
+    $from = $now->modify('-29 days')->format('Y-m-d');
+    $st = db()->prepare('SELECT quality, SUM(delta) AS n FROM eggs WHERE day >= ? GROUP BY quality');
+    $st->execute([$from]);
+    $good = 0;
+    $bad = 0;
+    foreach ($st->fetchAll() as $r) {
+        $r['quality'] === 'bon' ? $good += max(0, (int) $r['n']) : $bad += max(0, (int) $r['n']);
+    }
+    $st = db()->prepare("SELECT defects FROM eggs WHERE day >= ? AND delta > 0 AND defects != ''");
+    $st->execute([$from]);
+    $criteria = [];
+    foreach ($st->fetchAll(PDO::FETCH_COLUMN) as $list) {
+        foreach (explode(',', $list) as $d) {
+            $criteria[$d] = ($criteria[$d] ?? 0) + 1;
+        }
+    }
+    arsort($criteria);
+    $st = db()->prepare("SELECT e.client_id, e.day, e.species, e.quality, e.defects, e.note, e.created_at, p.name AS who
+        FROM eggs e LEFT JOIN people p ON p.id = e.person_id
+        WHERE e.delta > 0 AND (e.quality != 'bon' OR e.defects != '' OR e.note != '')
+        ORDER BY e.day DESC, e.id DESC LIMIT 15");
+    $st->execute();
+    return [
+        'good30' => $good,
+        'bad30' => $bad,
+        'criteria' => $criteria,
+        'recent' => array_map(fn ($r) => [
+            'clientId' => $r['client_id'],
+            'day' => $r['day'],
+            'species' => $r['species'],
+            'quality' => $r['quality'],
+            'defects' => $r['defects'] === '' ? [] : explode(',', $r['defects']),
+            'note' => $r['note'],
+            'who' => $r['who'],
+            'at' => (int) $r['created_at'],
+        ], $st->fetchAll()),
     ];
 }
 

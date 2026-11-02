@@ -35,6 +35,7 @@
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
     apple: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>',
     calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
     pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   };
 
@@ -325,7 +326,7 @@
       else html = S.account ? viewMyHouseholds() : viewWelcome();
     } else {
       const views = {
-        accueil: viewHome, oeufs: (x) => (x.id === 'calendrier' ? viewEggCalendar() : x.id === 'jour' ? viewEggDay(x) : viewEggs()), porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
+        accueil: viewHome, oeufs: (x) => (x.id === 'calendrier' ? viewEggCalendar() : x.id === 'jour' ? viewEggDay(x) : x.id === 'qualite' ? viewEggEval() : viewEggs()), porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
         poules: viewHens, poule: viewHen, reglages: viewSettings, qui: viewWho, sante: viewHealth, race: viewBreed,
         compte: viewAccount, premium: viewPremium, foyer: viewHouseholdCreate, connexion: viewAccountLogin, inscription: viewRegister,
         'nouveau-mot-de-passe': viewReset, 'mot-de-passe-oublie': viewForgot, rejoindre: viewJoin,
@@ -680,8 +681,10 @@
       ${back('#/', 'Accueil')}
       <h1>Les œufs</h1>
       ${offlineBanner()}
-      <div class="card big-count"><span class="muted">Aujourd'hui</span><span class="num">${e.today}</span><span class="muted">${e.today > 1 ? 'œufs ramassés' : 'œuf ramassé'}</span></div>
+      <div class="card big-count"><span class="muted">Aujourd'hui</span><span class="num">${e.today}</span><span class="muted">${e.today > 1 ? 'œufs ramassés' : 'œuf ramassé'}</span>
+        ${e.todayBad ? `<span class="good-bad"><b>${e.today - e.todayBad}</b> bon${e.today - e.todayBad > 1 ? 's' : ''} · <b class="bad">${e.todayBad}</b> mauvais</span>` : ''}</div>
       ${eggButtons()}
+      <a class="btn" href="#/oeufs/qualite">${I.search} Œuf abîmé ou à noter…</a>
       <a class="btn" href="#/oeufs/calendrier">${I.calendar} Calendrier · un jour oublié ?</a>
       <div class="grid2">
         <div class="card stat"><span class="label">7 derniers jours</span><span class="value">${e.last7}</span></div>
@@ -694,7 +697,79 @@
           ${e.days.map((d, i) => `<span class="${i === e.days.length - 1 ? 'today' : ''}" style="height:${Math.round((d.count / max) * 100)}%"></span>`).join('')}
         </div>
         <div class="bars-axis"><span>${fmtDay(e.days[0].day)}</span><span>aujourd'hui</span></div>
-      </div>` : ''}`;
+      </div>` : ''}
+      ${qualitySection()}`;
+  }
+
+  // ---------- qualité des œufs
+  const EGG_CRITERIA = {
+    fele: { label: 'Fêlé', bad: true },
+    casse: { label: 'Cassé', bad: true },
+    sale: { label: 'Sale', bad: true },
+    molle: { label: 'Coquille molle ou fine', bad: true },
+    sans: { label: 'Sans coquille', bad: true },
+    deforme: { label: 'Déformé ou rugueux', bad: true },
+    sang: { label: 'Trace de sang', bad: true },
+    petit: { label: 'Très petit', bad: false },
+    gros: { label: 'Très gros', bad: false },
+    double: { label: 'Double jaune', bad: false },
+  };
+  const criteriaText = (list) => list.map((d) => EGG_CRITERIA[d]?.label.toLowerCase() || d).join(', ');
+
+  function qualitySection() {
+    const q = S.eggs?.quality;
+    if (!q) return '';
+    const total = q.good30 + q.bad30;
+    const pct = total ? Math.round((q.bad30 / total) * 100) : 0;
+    const top = Object.entries(q.criteria || {}).slice(0, 4);
+    const multi = eggSpecies().length > 1;
+    return `
+      <div class="card stack">
+        <h2 style="margin:0">Qualité · 30 derniers jours</h2>
+        ${total ? `
+        <div class="good-bad big"><b>${q.good30}</b> bon${q.good30 > 1 ? 's' : ''} · <b class="bad">${q.bad30}</b> mauvais <span class="muted">(${pct} %)</span></div>
+        <div class="quality-bar" role="img" aria-label="${pct} % de mauvais œufs"><span style="width:${100 - pct}%"></span></div>` : '<p class="muted" style="margin:0">Pas encore d\'œufs ces 30 derniers jours.</p>'}
+        ${top.length ? `<div class="chips">${top.map(([d, n]) => `<span class="chip">${h(EGG_CRITERIA[d]?.label || d)} ×${n}</span>`).join('')}</div>` : ''}
+      </div>
+      ${q.recent.length ? `
+      <h2>Dernières remarques</h2>
+      <div class="card list">${q.recent.slice(0, 8).map((x) => `
+        <div class="stack" style="gap:.25rem">
+          <div class="row between"><span><span class="pill ${x.quality === 'bon' ? '' : 'watch'}">${x.quality === 'bon' ? 'Bon' : 'Mauvais'}</span>
+            ${multi ? `<span class="muted"> ${h(SPECIES[x.species]?.egg || '')}</span>` : ''}</span>
+            <button class="btn" type="button" data-act="evalRemove" data-cid="${h(x.clientId || '')}" style="min-height:2.6rem;padding:.2rem .7rem" aria-label="Supprimer cette remarque">Suppr.</button></div>
+          ${x.defects.length ? `<b>${h(cap(criteriaText(x.defects)))}</b>` : ''}
+          ${x.note ? `<span style="white-space:pre-line">${h(x.note)}</span>` : ''}
+          <span class="muted">${h(fmtLongDay(x.day))}${x.who ? ` · ${h(x.who)}` : ''}</span>
+        </div>`).join('')}</div>` : ''}`;
+  }
+
+  let evalState = null;
+  function viewEggEval() {
+    const kinds = eggSpecies();
+    if (!evalState) evalState = { quality: 'mauvais', defects: [], species: kinds[0], recount: false };
+    const st = evalState;
+    if (!kinds.includes(st.species)) st.species = kinds[0];
+    const goodToday = S.eggs?.todayGoodBySpecies?.[st.species] || 0;
+    return `
+      ${back('#/oeufs', 'Les œufs')}
+      <h1>Noter un œuf</h1>
+      ${err()}
+      <form class="stack" data-form="eggEval">
+        ${kinds.length > 1 ? `<div class="field"><span class="lab">Quel œuf ?</span>
+          <div class="seg wrap">${kinds.map((k) => `<button type="button" data-act="evalSpecies" data-v="${k}" aria-pressed="${st.species === k}">${cap(SPECIES[k].egg)}</button>`).join('')}</div></div>` : ''}
+        <div class="field"><span class="lab">Cet œuf est…</span>
+          <div class="seg"><button type="button" class="q-good" data-act="evalQuality" data-v="bon" aria-pressed="${st.quality === 'bon'}">${I.check} Bon</button>
+          <button type="button" class="q-bad" data-act="evalQuality" data-v="mauvais" aria-pressed="${st.quality === 'mauvais'}">Mauvais</button></div></div>
+        <div class="field"><span class="lab">Ce que vous remarquez</span>
+          <div class="crit">${Object.entries(EGG_CRITERIA).map(([k, c]) => `<button type="button" data-act="evalCriterion" data-v="${k}" aria-pressed="${st.defects.includes(k)}">${st.defects.includes(k) ? I.check : ''}${h(c.label)}</button>`).join('')}</div></div>
+        <div class="field"><label for="enote">Commentaire (facultatif)</label>
+          <textarea id="enote" name="note" maxlength="500" placeholder="Ex. trouvé hors du pondoir, coquille très fine…"></textarea></div>
+        ${st.quality === 'mauvais' && goodToday ? `<label class="check-row"><input type="checkbox" name="recount" ${st.recount ? 'checked' : ''} data-act-change="evalRecount">
+          <span>Je l'ai déjà compté comme bon aujourd'hui : le passer en mauvais</span></label>` : ''}
+        <button class="btn primary big block" type="submit">Enregistrer</button>
+        <p class="muted" style="margin:0">${st.quality === 'mauvais' ? 'Un mauvais œuf compte quand même dans la ponte du jour.' : 'Un bon œuf avec une remarque (double jaune, très gros…).'}</p>
+      </form>`;
   }
 
   /** One kind: the big +1 as before. Several kinds: one counter per kind. */
@@ -830,7 +905,8 @@
       ${back('#/oeufs/calendrier', 'Calendrier')}
       <h1>${h(fmtDayLong(day))}</h1>
       ${offlineBanner()}
-      <div class="card big-count"><span class="muted">Œufs ramassés ce jour-là</span><span class="num">${n === null ? '…' : n}</span></div>
+      <div class="card big-count"><span class="muted">Œufs ramassés ce jour-là</span><span class="num">${n === null ? '…' : n}</span>
+        ${c.bad?.[day] ? `<span class="good-bad">dont <b class="bad">${c.bad[day]}</b> mauvais</span>` : ''}</div>
       <div class="grid2">
         <button class="btn big" type="button" data-act="eggDay" data-day="${day}" data-species="${kinds[0]}" data-delta="-1" ${n ? '' : 'disabled'}>−1</button>
         <button class="btn primary big" type="button" data-act="eggDay" data-day="${day}" data-species="${kinds[0]}" data-delta="1" ${n === null ? 'disabled' : ''}>${I.eggPlus} +1</button>
@@ -1611,6 +1687,25 @@
     },
     async accountLogout() { await call('account_logout', {}); toast('Déconnecté du compte'); go(S.auth ? '#/reglages' : '#/'); },
     formSpecies(el) { formSpecies = el.dataset.v; keepForm(() => render()); },
+    evalQuality(el) { evalState.quality = el.dataset.v; keepForm(() => render()); },
+    evalSpecies(el) { evalState.species = el.dataset.v; keepForm(() => render()); },
+    evalCriterion(el) {
+      const k = el.dataset.v;
+      const list = evalState.defects;
+      if (list.includes(k)) list.splice(list.indexOf(k), 1);
+      else {
+        list.push(k);
+        if (EGG_CRITERIA[k].bad) evalState.quality = 'mauvais';
+      }
+      keepForm(() => render());
+    },
+    evalRemove(el) {
+      if (!el.dataset.cid || !confirm('Supprimer cette remarque ? L\'œuf ne sera plus compté.')) return;
+      const q = S.eggs.quality;
+      q.recent = q.recent.filter((x) => x.clientId !== el.dataset.cid);
+      enqueue('egg_undo', { clientId: el.dataset.cid });
+      toast('Remarque supprimée');
+    },
     calMove(el) { calMonth = shiftMonth(calMonth || monthOf(S.today), Number(el.dataset.v)); render(); },
     eggDay(el) {
       const c = monthCache[monthOf(el.dataset.day)];
@@ -1694,6 +1789,7 @@
 
   document.addEventListener('change', (ev) => {
     rememberField(ev.target);
+    if (ev.target.dataset.actChange === 'evalRecount' && evalState) evalState.recount = ev.target.checked;
     if (ev.target.matches('[data-photo-date]')) photoDate = ev.target.value;
     const input = ev.target.closest('[data-photo]');
     if (input?.files?.[0]) uploadPhoto(Number(input.dataset.photo), input.files[0]);
@@ -1701,6 +1797,32 @@
 
   // ------------------------------------------------------------------ formulaires
   const forms = {
+    eggEval(f, fd) {
+      const st = evalState;
+      const note = String(fd.get('note') || '').trim();
+      if (st.quality === 'bon' && !st.defects.length && !note) return showError('Cochez au moins un critère ou écrivez un commentaire.');
+      const recount = st.quality === 'mauvais' && st.recount && (S.eggs.todayGoodBySpecies?.[st.species] || 0) > 0;
+      const e = S.eggs;
+      const apply = (sign) => {
+        if (!recount) { e.today += sign; e.last7 += sign; e.last30 += sign; e.todayBySpecies[st.species] = (e.todayBySpecies[st.species] || 0) + sign; }
+        if (st.quality === 'mauvais') { e.todayBad += sign; e.quality.bad30 += sign; } else { e.quality.good30 += sign; }
+        if (recount) { e.todayGoodBySpecies[st.species] -= sign; e.quality.good30 -= sign; }
+        else if (st.quality === 'bon') e.todayGoodBySpecies[st.species] = (e.todayGoodBySpecies[st.species] || 0) + sign;
+      };
+      e.todayGoodBySpecies = e.todayGoodBySpecies || {};
+      e.todayBySpecies = e.todayBySpecies || {};
+      apply(1);
+      const clientId = enqueue('egg_eval', { quality: st.quality, defects: st.defects, note, species: st.species, recount });
+      e.quality.recent.unshift({ clientId, day: S.today, species: st.species, quality: st.quality, defects: [...st.defects], note, who: me()?.name, at: Math.floor(Date.now() / 1000) });
+      const label = `${st.quality === 'bon' ? 'Bon' : 'Mauvais'} œuf noté${st.defects.length ? ` (${criteriaText(st.defects)})` : ''}`;
+      evalState = null;
+      go('#/oeufs');
+      toast(label, () => {
+        apply(-1);
+        e.quality.recent = e.quality.recent.filter((x) => x.clientId !== clientId);
+        enqueue('egg_undo', { clientId });
+      });
+    },
     eggDay(f, fd) {
       const n = Number(fd.get('count'));
       if (!Number.isFinite(n) || n < 0 || n > 500) return showError('Indiquez un nombre entre 0 et 500.');
