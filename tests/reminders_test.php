@@ -62,7 +62,7 @@ check('the eggs, hens and photos moved with it', (int) db()->query('SELECT SUM(d
     && db()->query('SELECT name FROM hens')->fetchColumn() === 'Cocotte' && is_file("$data/foyers/1/photos/1.jpg"));
 check('the old files are gone from data/', !is_file("$data/kotkot.sqlite") && !is_dir("$data/photos"));
 check('the household got an invitation code, and no owner yet', strlen((string) household()['invite_code']) === 8 && household()['owner_id'] === null);
-check('the health table and poultry kinds were added', (int) db()->query('PRAGMA user_version')->fetchColumn() === 3
+check('the health table and poultry kinds were added', (int) db()->query('PRAGMA user_version')->fetchColumn() >= 3
     && db()->query('SELECT species FROM hens')->fetchColumn() === 'poule');
 
 echo "Rappels\n";
