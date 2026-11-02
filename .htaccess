@@ -1,0 +1,7 @@
+# Used only if the Plesk document root is the repository root instead of /public.
+Options -Indexes
+RewriteEngine On
+RewriteRule ^(src|data|tests|docs)(/|$) - [F,L]
+RewriteRule ^(README\.md|\.git.*)$ - [F,L]
+RewriteCond %{REQUEST_URI} !/public/
+RewriteRule ^(.*)$ public/$1 [L]
