@@ -29,6 +29,9 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 - [x] **Photo de profil** : la plus récente par défaut, ou une photo choisie ; **recadrage** au doigt (toucher, glisser, zoomer, flèches)
 - [x] Photos de l'album gardées entières
 
+## V2.6 — fait
+- [x] **La Gazette du poulailler** : les nouvelles du poulailler en articles comiques (record, grève de la ponte, double jaune, couvre-feu, anniversaire, photo du jour…), à partager en image
+
 ## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité

@@ -742,3 +742,43 @@ function action_health_remove(array $in): array
     db()->prepare('DELETE FROM health WHERE id = ?')->execute([(int) ($in['id'] ?? 0)]);
     return [];
 }
+
+// ================================================================ La Gazette du Poulailler
+
+/** Facts with some history behind them, for the funny news of the coop. */
+function action_gazette(): array
+{
+    require_auth();
+    $now = now();
+    $today = $now->format('Y-m-d');
+    $record = db()->query("SELECT day, SUM(delta) AS n FROM eggs GROUP BY day HAVING n > 0 ORDER BY n DESC, day DESC LIMIT 1")->fetch();
+    $total = (int) db()->query('SELECT COALESCE(SUM(delta), 0) FROM eggs')->fetchColumn();
+    $sumBetween = function (string $from, string $to): int {
+        $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day >= ? AND day <= ?');
+        $st->execute([$from, $to]);
+        return max(0, (int) $st->fetchColumn());
+    };
+    $monthStart = $now->format('Y-m-01');
+    $prevStart = $now->modify('first day of last month')->format('Y-m-d');
+    $prevSameDay = min($now->modify('first day of last month')->modify('+' . ((int) $now->format('j') - 1) . ' days')->format('Y-m-d'),
+        $now->modify('last day of last month')->format('Y-m-d'));
+    $st = db()->prepare('SELECT p.id, p.hen_id, p.taken_at, h.name FROM hen_photos p JOIN hens h ON h.id = p.hen_id
+        WHERE h.active = 1 AND p.created_at >= ? ORDER BY p.created_at DESC LIMIT 6');
+    $st->execute([now_ts() - 7 * 86400]);
+    $photos = array_map(fn ($r) => ['photoId' => (int) $r['id'], 'henId' => (int) $r['hen_id'], 'name' => $r['name'], 'at' => (int) $r['taken_at']], $st->fetchAll());
+    $st = db()->prepare("SELECT p.name, COUNT(*) AS n FROM task_done d JOIN people p ON p.id = d.person_id
+        WHERE d.done_at >= ? GROUP BY p.id ORDER BY n DESC LIMIT 1");
+    $st->execute([now_ts() - 7 * 86400]);
+    $worker = $st->fetch();
+    $st = db()->prepare("SELECT COUNT(*) FROM eggs WHERE delta > 0 AND quality != 'bon' AND day >= ?");
+    $st->execute([$now->modify('-29 days')->format('Y-m-d')]);
+    return ['gazette' => [
+        'record' => $record ? ['day' => $record['day'], 'count' => (int) $record['n']] : null,
+        'total' => max(0, $total),
+        'month' => $sumBetween($monthStart, $today),
+        'prevMonthSoFar' => $sumBetween($prevStart, $prevSameDay),
+        'photos' => $photos,
+        'worker' => $worker ? ['name' => $worker['name'], 'tasks' => (int) $worker['n']] : null,
+        'bad30' => (int) $st->fetchColumn(),
+    ]];
+}

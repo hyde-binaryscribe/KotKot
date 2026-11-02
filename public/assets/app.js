@@ -38,6 +38,7 @@
     search: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>',
     star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5L12 17.4l-5.9 3.1 1.2-6.5L2.5 9.4l6.6-.9z"/></svg>',
     crop: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>',
+    news: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h13v15a2 2 0 0 0 2 2H6a2 2 0 0 1-2-2z"/><path d="M17 8h3v11a2 2 0 0 1-2 2"/><path d="M8 8h5M8 12h5M8 16h3"/></svg>',
     pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   };
 
@@ -335,7 +336,7 @@
       const views = {
         accueil: viewHome, oeufs: (x) => (x.id === 'calendrier' ? viewEggCalendar() : x.id === 'jour' ? viewEggDay(x) : x.id === 'qualite' ? viewEggEval() : viewEggs()), porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
         poules: viewHens, poule: viewHen, reglages: viewSettings, qui: viewWho, sante: viewHealth, race: viewBreed,
-        compte: viewAccount, premium: viewPremium, foyer: viewHouseholdCreate, connexion: viewAccountLogin, inscription: viewRegister,
+        compte: viewAccount, premium: viewPremium, gazette: viewGazette, foyer: viewHouseholdCreate, connexion: viewAccountLogin, inscription: viewRegister,
         'nouveau-mot-de-passe': viewReset, 'mot-de-passe-oublie': viewForgot, rejoindre: viewJoin,
       };
       html = (views[r.name] || viewHome)(r);
@@ -678,7 +679,8 @@
         <a class="tile yolk" href="#/oeufs">${I.egg}<span><span class="t-title" style="display:block">Œufs</span><span class="t-sub">${S.eggs?.today ?? 0} aujourd'hui</span></span></a>
         <a class="tile" href="#/taches">${I.tasks}<span><span class="t-title" style="display:block">Tâches</span><span class="t-sub">${tc.done} faite${tc.done > 1 ? 's' : ''} sur ${tc.total}</span></span></a>
         <a class="tile green" href="#/poules">${I.hen}<span><span class="t-title" style="display:block">${cap(flockTitle())}</span><span class="t-sub">${h(flockSummary())}${watch ? ` · ${watch} à surveiller` : ''}</span></span></a>
-      </nav>`;
+      </nav>
+      <a class="btn gz-link" href="#/gazette">${I.news} La Gazette du poulailler</a>`;
   }
 
   // ---------- œufs
@@ -993,6 +995,318 @@
       apply(before);
       enqueue('egg_undo', { clientId });
     });
+  }
+
+  // ---------- La Gazette du Poulailler : les nouvelles du jour, façon presse à scandale, à partager
+  let gazette = null; // facts from the server
+  let gazetteAt = 0;
+  const gazetteVariant = {};
+  const gazetteEdits = {};
+  let gazetteEditing = null;
+
+  async function loadGazette() {
+    gazetteAt = Date.now();
+    try { gazette = (await post('gazette', {})).gazette; } catch { gazette = gazette || {}; }
+    if (route().name === 'gazette') backgroundRender();
+  }
+
+  const pick = (id, list) => list[(gazetteVariant[id] || 0) % list.length];
+  const hhmmTs = (ts) => fmtTime(ts);
+  const recentDays = (iso, days) => daysBetween(iso, S.today) <= days;
+  const dayWord = (iso) => (iso === S.today ? 'aujourd\'hui' : daysBetween(iso, S.today) === 1 ? 'hier' : `le ${fmtLongDay(iso)}`);
+
+  /** Every story: what happened, told three ways. Only true facts, only funny words. */
+  function gazetteStories() {
+    const g = gazette || {};
+    const e = S.eggs || {};
+    const hens = S.hens || [];
+    const out = [];
+    const add = (id, kicker, versions, extra = {}) => out.push({ id, kicker, versions, ...extra });
+    const n = e.today || 0;
+    const hour = Number(new Intl.DateTimeFormat('fr-FR', { timeZone: tz(), hour: 'numeric' }).format(new Date()));
+    const avatarOf = (hen) => (hen?.photo ? `${API}?a=avatar&id=${hen.id}&v=${hen.avatar || hen.photo}` : null);
+
+    if (g.record && g.record.count >= 2 && g.record.day === S.today) {
+      add('record', 'Record historique', [
+        [`${g.record.count} œufs aujourd'hui !`, 'Du jamais vu dans l\'histoire du poulailler. Les poules refusent de commenter, mais l\'ambiance est électrique au pondoir.'],
+        ['Le pondoir explose les compteurs', `${g.record.count} œufs en une journée : c'est le nouveau record. Une plaque commémorative est à l'étude.`],
+        ['Historique !', `${g.record.count} œufs ! La rédaction a vérifié trois fois. Les poules, elles, font comme si c'était normal.`],
+      ]);
+    } else if (n >= 1) {
+      add('today', 'Ponte du jour', n === 1 ? [
+        ['Un œuf, un seul, mais quel œuf !', 'La production du jour tient en un exemplaire. La rédaction salue la qualité plutôt que la quantité.'],
+        ['Édition limitée au pondoir', 'Un œuf unique ce jour. Les collectionneurs s\'arrachent déjà la boîte.'],
+      ] : [
+        [`${n} œufs ce jour !`, 'La direction du poulailler salue une « performance remarquable ». Les poules, elles, sont retournées gratter comme si de rien n\'était.'],
+        ['Le pondoir tourne à plein régime', `${n} œufs ramassés. Interrogée, une source proche du perchoir parle d'un « vrai travail d'équipe ».`],
+        ['Coup de chaud sur la production', `Avec ${n} œufs, le poulailler dépasse ses objectifs. Le grain sera-t-il augmenté ? La question est posée.`],
+      ]);
+    } else if (hour >= 12 && hens.length) {
+      add('strike', 'Grève', [
+        ['Grève surprise au pondoir', 'Aucun œuf aujourd\'hui. Les syndicats réclament des vers de farine et une sieste supplémentaire.'],
+        ['Silence radio au nid', 'Zéro œuf à l\'heure où nous écrivons. La rédaction suit la situation de très près.'],
+        ['Les poules en télétravail ?', 'Pas un œuf de la journée. Une réunion de crise est prévue autour de la mangeoire.'],
+      ]);
+    }
+    const quail = e.todayBySpecies?.caille || 0;
+    if (quail) {
+      add('quail', 'Mini mais costauds', [
+        [`${quail} œufs de caille !`, 'Petits par la taille, grands par le talent. La rédaction applaudit des deux ailes.'],
+        ['Les cailles ne lâchent rien', `${quail} mini-œufs ramassés. « On n'a pas besoin d'être grosses pour assurer », confie l'une d'elles.`],
+      ]);
+    }
+    const dbl = (e.quality?.recent || []).find((x) => x.defects.includes('double') && recentDays(x.day, 7));
+    if (dbl) {
+      add('double', 'Insolite', [
+        ['Un œuf à double jaune !', `Découvert ${dayWord(dbl.day)}${dbl.who ? ` par ${dbl.who}` : ''}. Les scientifiques sont perplexes, la pondeuse reste modeste.`],
+        ['Deux pour le prix d\'un', `Un œuf à double jaune ${dayWord(dbl.day)}. Une poule aurait-elle fait des heures supplémentaires ?`],
+      ]);
+    }
+    const crack = (e.quality?.recent || []).find((x) => x.quality !== 'bon' && recentDays(x.day, 3));
+    if (crack) {
+      const dirty = crack.defects.includes('sale');
+      add('fait-divers', 'Fait divers', dirty ? [
+        ['Scandale : un œuf crotté', '« Ce n\'est pas moi ! », jure toute la basse-cour d\'une seule voix. L\'enquête piétine.'],
+        ['L\'affaire de l\'œuf sale', 'Retrouvé dans un état déplorable. Les soupçons se portent sur un passage un peu pressé au pondoir.'],
+      ] : [
+        ['Un œuf mal en point', `Un œuf ${criteriaText(crack.defects) || 'abîmé'} retrouvé ${dayWord(crack.day)}. Aucune poule n'a été mise en examen.`],
+        ['Drame dans la paille', 'Un œuf n\'a pas survécu à sa première journée. Une minute de silence a été observée (environ trois secondes).'],
+      ]);
+    }
+    const week = e.last7 || 0;
+    if (week) {
+      const layers = hens.filter((x) => sp(x) === 'poule').length || hens.length || 1;
+      const per = (week / layers).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
+      add('week', 'La semaine en chiffres', [
+        [`${week} œufs en 7 jours`, `Soit ${per} par pondeuse. À la bourse de l'œuf, les cours s'affolent.`],
+        ['Bilan de la semaine', `${week} œufs au compteur. De quoi faire ${Math.max(1, Math.floor(week / 3))} omelettes de trois œufs. La rédaction a faim.`],
+      ]);
+    }
+    if (g.prevMonthSoFar > 0 && g.month >= 0) {
+      const pct = Math.round(((g.month - g.prevMonthSoFar) / g.prevMonthSoFar) * 100);
+      if (Math.abs(pct) >= 10) {
+        add('economy', 'Économie', pct > 0 ? [
+          [`Ponte en hausse de ${pct} %`, 'Par rapport au mois dernier à la même date. Les économistes parlent d\'un « miracle du grain ».'],
+          ['La croissance est au rendez-vous', `+${pct} % d'œufs ce mois-ci. Le ministère du Poulailler se félicite.`],
+        ] : [
+          [`Ponte en baisse de ${-pct} %`, 'Mue, froid ou simple coup de mou ? Les poules invoquent leur droit à la déconnexion.'],
+          ['Ralentissement au pondoir', `${pct} % d'œufs par rapport au mois dernier. Les experts recommandent patience et vers de farine.`],
+        ]);
+      }
+    }
+    if (g.total >= 100 && !(g.record && g.record.day === S.today)) {
+      const round = Math.floor(g.total / 100) * 100;
+      add('total', 'Chiffre rond', [
+        [`Plus de ${round} œufs depuis le début !`, `De quoi faire ${Math.floor(g.total / 6)} omelettes de six œufs. Personne n'a osé compter les coquilles.`],
+        [`${g.total} œufs au compteur`, 'Mis bout à bout, ils mesureraient… beaucoup. La rédaction n\'a pas de mètre assez long.'],
+      ]);
+    }
+    if (g.record && g.record.count >= 2 && g.record.day !== S.today) {
+      add('record-old', 'Le saviez-vous ?', [
+        [`Le record tient toujours : ${g.record.count} œufs`, `C'était le ${fmtLongDay(g.record.day)}. Depuis, personne n'a fait mieux. Les poules sont-elles sous pression ?`],
+      ]);
+    }
+    const lastClose = (S.door?.history || []).find((x) => x.action === 'close' && Date.now() / 1000 - x.at < 2 * 86400);
+    if (lastClose && S.door?.sunset) {
+      const minutes = Math.round((lastClose.at - (S.door.sunset - (dayKey(lastClose.at) === S.today ? 0 : 86400))) / 60);
+      if (minutes > 60) {
+        add('curfew', 'Couvre-feu', [
+          [`Porte fermée à ${hhmmTs(lastClose.at)}`, `${lastClose.who || 'Quelqu\'un'} a fermé bien après le coucher du soleil. Les poules, couchées depuis longtemps, n'ont rien remarqué. Ouf.`],
+          ['Retard au couvre-feu', `Fermeture de la porte à ${hhmmTs(lastClose.at)}. Le renard, lui, regardait sa montre.`],
+        ]);
+      }
+    }
+    const firstOpen = (S.door?.history || []).find((x) => x.action === 'open' && dayKey(x.at) === S.today);
+    if (firstOpen && Number(new Intl.DateTimeFormat('fr-FR', { timeZone: tz(), hour: 'numeric' }).format(new Date(firstOpen.at * 1000))) < 7) {
+      add('early', 'Lève-tôt', [
+        [`Porte ouverte à ${hhmmTs(firstOpen.at)}`, `${firstOpen.who || 'Quelqu\'un'} était debout avant tout le monde. Les poules exigent des explications.`],
+      ]);
+    }
+    if (g.worker && g.worker.tasks >= 3) {
+      add('worker', 'Palmarès', [
+        [`${g.worker.name}, champion·ne de la semaine`, `${g.worker.tasks} tâches accomplies en 7 jours. Une statue en graines de tournesol est à l'étude.`],
+        [`Tout le monde dit merci à ${g.worker.name}`, `${g.worker.tasks} corvées en une semaine. Les poules envisagent de lui offrir un œuf (un seul, faut pas exagérer).`],
+      ]);
+    }
+    const allDone = (S.tasks || []).filter((t) => t.dueToday);
+    if (allDone.length && allDone.every((t) => t.done)) {
+      add('clean', 'Propreté', [
+        ['Le poulailler impeccable', 'Toutes les tâches du jour sont faites. Les poules envisagent une inspection surprise, gants blancs compris.'],
+      ]);
+    }
+    for (const hen of hens) {
+      if (hen.arrivedOn && recentDays(hen.arrivedOn, 14)) {
+        add(`welcome-${hen.id}`, 'Bienvenue', [
+          [`${hen.name} rejoint la basse-cour`, '« Sérieuse, motivée, bonne picoreuse », d\'après ses nouvelles voisines. Les places au perchoir sont en cours de renégociation.'],
+          [`Arrivée remarquée : ${hen.name}`, 'Premières impressions de l\'équipe : « On attend de voir les œufs. »'],
+        ], { image: avatarOf(hen) });
+      }
+      if (hen.bornOn) {
+        const [, m, d] = hen.bornOn.split('-');
+        const thisYear = `${S.today.slice(0, 4)}-${m}-${d}`;
+        const gap = daysBetween(thisYear, S.today);
+        const years = Number(S.today.slice(0, 4)) - Number(hen.bornOn.slice(0, 4));
+        if (years >= 1 && gap >= 0 && gap <= 3) {
+          add(`birthday-${hen.id}`, 'Anniversaire', [
+            [`Joyeux anniversaire ${hen.name} !`, `${plural(years, 'an', 'ans')} déjà ! Un gâteau aux graines est prévu au goûter. Les invitations ont été picorées.`],
+          ], { image: avatarOf(hen) });
+        }
+      }
+      if (hen.status === 'watch') {
+        add(`health-${hen.id}`, 'Bulletin de santé', [
+          [`${hen.name} se repose`, 'Toute la basse-cour lui souhaite un prompt rétablissement. Les visites sont limitées aux vers de terre.'],
+        ], { image: avatarOf(hen) });
+      }
+    }
+    const shot = (g.photos || [])[0];
+    if (shot) {
+      add(`photo-${shot.photoId}`, 'Photo du jour', [
+        [`${shot.name} prend la pose`, 'Notre photographe est encore sous le charme. Les autres réclament déjà leur séance.'],
+        [`${shot.name}, star de la semaine`, 'Les paparazzis du poulailler ont encore frappé. Aucun démenti de l\'intéressée.'],
+      ], { image: photoUrl(shot.photoId) });
+    }
+    if (!out.length) {
+      add('calm', 'Calme plat', [
+        ['Rien à signaler au poulailler', 'Les poules picorent, le soleil brille. Un journalisme d\'investigation de haut niveau est en cours.'],
+      ]);
+    }
+    // French typography: a non-breaking space before ! ? : ; » and after «
+    const fr = (t) => t.replace(/ ([!?:;»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
+    return out.map((st) => {
+      const [title, body] = pick(st.id, st.versions);
+      const edit = gazetteEdits[st.id];
+      return { ...st, title: fr(edit?.title ?? title), body: fr(edit?.body ?? body) };
+    });
+  }
+
+  function viewGazette() {
+    if (!gazette || Date.now() - gazetteAt > 30000) loadGazette();
+    const stories = gazette ? gazetteStories() : [];
+    const edition = new Intl.DateTimeFormat('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${S.today}T12:00:00Z`));
+    return `
+      ${back('#/', 'Accueil')}
+      <div class="gz-head"><div class="gz-name">La Gazette</div><div class="gz-sub">du poulailler · ${h(S.household?.name || '')}</div>
+        <div class="gz-ed">Édition du ${h(edition)}</div></div>
+      <p class="muted" style="margin:0">Les nouvelles du poulailler, à partager avec la famille et les amis. Touchez « Autre version » pour changer le ton.</p>
+      ${gazette ? '' : '<p class="loading">La rédaction tape ses articles…</p>'}
+      ${stories.map((st, i) => `
+        <article class="gz-card ${i === 0 ? 'gz-top' : ''}">
+          <span class="gz-kicker">${h(st.kicker)}</span>
+          ${gazetteEditing === st.id ? `
+          <form class="stack" data-form="gazetteEdit" data-id="${h(st.id)}">
+            <div class="field"><label for="gz-t">Titre</label><input id="gz-t" name="title" maxlength="120" value="${h(st.title)}"></div>
+            <div class="field"><label for="gz-b">Article</label><textarea id="gz-b" name="body" maxlength="400">${h(st.body)}</textarea></div>
+            <div class="grid2"><button class="btn primary" type="submit">OK</button><button class="btn" type="button" data-act="gazetteEditCancel">Annuler</button></div>
+          </form>` : `
+          <h2 class="gz-title">${h(st.title)}</h2>
+          ${st.image ? `<img class="gz-img" src="${st.image}" alt="" loading="lazy">` : ''}
+          <p class="gz-body">${h(st.body)}</p>
+          <button class="btn primary" type="button" data-act="gazetteShare" data-id="${h(st.id)}">${I.share} Partager</button>
+          <div class="grid2">
+            ${st.versions.length > 1 && !gazetteEdits[st.id] ? `<button class="btn" type="button" data-act="gazetteNext" data-id="${h(st.id)}">Autre version</button>` : '<span></span>'}
+            <button class="btn" type="button" data-act="gazetteEdit" data-id="${h(st.id)}">Modifier</button>
+          </div>`}
+        </article>`).join('')}`;
+  }
+
+  /** The story as a 1080 × 1350 picture (the size social networks like). */
+  async function gazetteImage(st) {
+    try { await document.fonts.load('700 70px "Atkinson Hyperlegible"'); await document.fonts.load('400 40px "Atkinson Hyperlegible"'); } catch { /* police système */ }
+    const W = 1080, H = 1350, M = 72;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    const font = (w, px) => `${w} ${px}px "Atkinson Hyperlegible", system-ui, sans-serif`;
+    const lines = (text, px, weight, max) => {
+      g.font = font(weight, px);
+      const out = [];
+      let line = '';
+      for (const word of text.split(/\s+/)) {
+        const test = line ? `${line} ${word}` : word;
+        if (g.measureText(test).width > max && line) { out.push(line); line = word; } else line = test;
+      }
+      if (line) out.push(line);
+      return out;
+    };
+    g.fillStyle = '#EEF2EA'; g.fillRect(0, 0, W, H);
+    // masthead
+    g.fillStyle = '#1B2419'; g.fillRect(0, 0, W, 210);
+    g.fillStyle = '#F5B700'; g.font = font(700, 96); g.textBaseline = 'alphabetic'; g.fillText('LA GAZETTE', M, 112);
+    g.fillStyle = '#FFFFFF'; g.font = font(400, 40); g.fillText(`du poulailler · ${S.household?.name || ''}`.slice(0, 48), M, 172);
+    g.fillStyle = '#F5B700'; g.fillRect(0, 210, W, 10);
+    let y = 300;
+    // kicker
+    g.font = font(700, 34);
+    const k = st.kicker.toUpperCase();
+    const kw = g.measureText(k).width + 48;
+    g.fillStyle = '#B5470B'; roundRect(g, M, y - 46, kw, 64, 32); g.fill();
+    g.fillStyle = '#FFFFFF'; g.fillText(k, M + 24, y);
+    y += 40;
+    // title
+    let tSize = 76;
+    let tLines = lines(st.title, tSize, 700, W - 2 * M);
+    while (tLines.length > 3 && tSize > 54) { tSize -= 6; tLines = lines(st.title, tSize, 700, W - 2 * M); }
+    g.fillStyle = '#1B2419'; g.font = font(700, tSize);
+    for (const l of tLines) { y += tSize * 1.12; g.fillText(l, M, y); }
+    y += 30;
+    // body (measured first, the picture takes what is left)
+    const bLines = lines(st.body, 42, 400, W - 2 * M);
+    const footer = 90;
+    const bodyH = bLines.length * 56;
+    if (st.image) {
+      try {
+        const img = new Image();
+        img.src = st.image;
+        await img.decode();
+        const ph = Math.max(260, H - footer - bodyH - 40 - y);
+        const pw = W - 2 * M;
+        const scale = Math.max(pw / img.naturalWidth, ph / img.naturalHeight);
+        const sw = pw / scale, sh = ph / scale;
+        g.save(); roundRect(g, M, y, pw, ph, 36); g.clip();
+        g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 3, sw, sh, M, y, pw, ph);
+        g.restore();
+        y += ph + 24;
+      } catch { /* sans photo */ }
+    } else {
+      // a big egg as illustration
+      const cx = W / 2, cy = y + (H - footer - bodyH - y) / 2 - 10, r = Math.min(150, (H - footer - bodyH - y) / 2 - 30);
+      if (r > 60) {
+        g.fillStyle = '#F5B700'; g.beginPath(); g.arc(cx, cy, r * 1.5, 0, Math.PI * 2); g.fill();
+        g.fillStyle = '#FFFFFF'; g.strokeStyle = '#1B2419'; g.lineWidth = 14;
+        g.beginPath(); g.ellipse(cx, cy + r * 0.1, r * 0.78, r, 0, 0, Math.PI * 2); g.fill(); g.stroke();
+      }
+      y = H - footer - bodyH - 20;
+    }
+    g.fillStyle = '#1B2419'; g.font = font(400, 42);
+    for (const l of bLines) { y += 56; g.fillText(l, M, y); }
+    g.fillStyle = '#3D4A3A'; g.font = font(400, 30);
+    g.fillText('Fait avec KotKot · le poulailler de la famille', M, H - 40);
+    return new Promise((res) => c.toBlob(res, 'image/png'));
+  }
+
+  function roundRect(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+  }
+
+  async function gazetteShare(id) {
+    const st = gazetteStories().find((x) => x.id === id);
+    if (!st) return;
+    toast('Mise en page…');
+    const blob = await gazetteImage(st);
+    const text = `La Gazette du poulailler : ${st.title} — ${st.body}`;
+    const file = new File([blob], 'gazette-du-poulailler.png', { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      hideToast();
+      try { await navigator.share({ files: [file], text, title: 'La Gazette du poulailler' }); } catch { /* partage annulé */ }
+      return;
+    }
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'gazette-du-poulailler.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    try { await navigator.clipboard.writeText(text); toast('Image enregistrée et texte copié : à coller où vous voulez'); } catch { toast('Image enregistrée'); }
   }
 
   // ---------- porte
@@ -1857,6 +2171,10 @@
       crop = null;
       go(`#/poule/${id}`);
     },
+    gazetteShare: (el) => gazetteShare(el.dataset.id),
+    gazetteNext(el) { gazetteVariant[el.dataset.id] = (gazetteVariant[el.dataset.id] || 0) + 1; render(); },
+    gazetteEdit(el) { gazetteEditing = el.dataset.id; render(); document.getElementById('gz-t')?.focus(); },
+    gazetteEditCancel() { gazetteEditing = null; render(); },
     calMove(el) { calMonth = shiftMonth(calMonth || monthOf(S.today), Number(el.dataset.v)); render(); },
     eggDay(el) {
       const c = monthCache[monthOf(el.dataset.day)];
@@ -1948,6 +2266,11 @@
 
   // ------------------------------------------------------------------ formulaires
   const forms = {
+    gazetteEdit(f, fd) {
+      gazetteEdits[f.dataset.id] = { title: String(fd.get('title') || '').trim(), body: String(fd.get('body') || '').trim() };
+      gazetteEditing = null;
+      render();
+    },
     eggEval(f, fd) {
       const st = evalState;
       const note = String(fd.get('note') || '').trim();

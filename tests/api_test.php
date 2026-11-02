@@ -217,6 +217,15 @@ req('lea', 'hen_profile', ['id' => $henId, 'photoId' => $older]);
 [, $r] = req('lea', 'state');
 check('deleting the chosen photo goes back to the latest', $henOf($r)['photo'] === $newest && $henOf($r)['profilePhoto'] === null);
 
+[$s, $r] = req('lea', 'gazette', []);
+$gz = $r['gazette'] ?? [];
+check('gazette: record day, totals, recent photos', $s === 200 && $gz['record']['count'] >= 6 && $gz['total'] > 0 && count($gz['photos']) >= 1
+    && isset($gz['month'], $gz['prevMonthSoFar'], $gz['bad30']));
+[, $r2] = req('lea', 'rev');
+req('lea', 'gazette', []);
+[, $r3] = req('lea', 'rev');
+check('reading the gazette changes nothing', $r2['rev'] === $r3['rev']);
+
 echo "Carnet santé\n";
 $today = (new DateTimeImmutable('now', new DateTimeZone('Europe/Paris')))->format('Y-m-d');
 [$s] = req('lea', 'health_add', ['kind' => 'magie']);
