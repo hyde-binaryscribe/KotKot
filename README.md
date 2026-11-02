@@ -38,6 +38,11 @@ docs/          ← charte graphique
 
 ## Installer sur Plesk (extension Git)
 
+👉 **Guide complet pas à pas, avec dépannage : [docs/installation-plesk.md](docs/installation-plesk.md)**
+
+En bref :
+
+
 1. **Sites et domaines › votre domaine › Git › Ajouter un dépôt**
    - Dépôt distant : `https://github.com/hyde-binaryscribe/kotkot.git` (dépôt privé : ajoutez la clé SSH que Plesk affiche dans *GitHub › Settings › Deploy keys*, et utilisez l'adresse `git@github.com:hyde-binaryscribe/kotkot.git`).
    - Branche : `main`. Mode de déploiement : **automatique**.

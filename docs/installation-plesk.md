@@ -1,0 +1,188 @@
+# Installer KotKot sur Plesk — pas à pas
+
+Durée : 15 à 20 minutes, une seule fois. Ensuite, chaque mise à jour poussée sur GitHub arrive toute seule sur le site.
+
+Les noms des menus correspondent à Plesk en français (version Obsidian). Selon votre hébergeur, un bouton peut être placé un peu différemment, mais les mots restent les mêmes.
+
+Dans ce guide, l'adresse d'exemple est **`poules.exemple.fr`** : remplacez-la par la vôtre.
+
+---
+
+## 0. Ce qu'il faut avant de commencer
+
+- [ ] Un accès à Plesk avec l'extension **Git** (on la voit dans le menu du domaine).
+- [ ] Un nom de domaine qui pointe vers ce Plesk (par exemple `exemple.fr`).
+- [ ] Un accès au dépôt GitHub **hyde-binaryscribe/KotKot**.
+
+> **Conseil** : installez KotKot sur un **sous-domaine** (`poules.exemple.fr`). Il aura ainsi son propre dossier, son propre certificat et ses propres réglages, sans toucher au reste du site.
+
+---
+
+## 1. Créer le sous-domaine
+
+1. **Sites Web et domaines** › **Ajouter un sous-domaine**.
+2. Nom du sous-domaine : `poules`. Domaine parent : `exemple.fr`.
+3. Racine du document : laissez la valeur proposée (`poules.exemple.fr`), on la changera à l'étape 4.
+4. Cochez **Sécuriser avec un certificat SSL/TLS Let's Encrypt** si la case est proposée.
+5. **OK**.
+
+> Le nom DNS peut mettre quelques minutes à fonctionner. Si Let's Encrypt échoue, attendez 10 minutes et refaites l'étape 2.
+
+---
+
+## 2. Activer le HTTPS (indispensable)
+
+Le HTTPS est obligatoire pour installer l'appli sur le téléphone, recevoir les rappels et utiliser la position GPS.
+
+1. Dans le bloc de `poules.exemple.fr` : **Certificats SSL/TLS**.
+2. **Installer** un certificat gratuit **Let's Encrypt** (cochez aussi « www » si proposé).
+3. Revenez sur le domaine : **Paramètres d'hébergement** › cochez **Redirection permanente SEO-safe 301 de HTTP vers HTTPS** › **OK**.
+
+---
+
+## 3. Brancher le dépôt GitHub
+
+1. Dans le bloc de `poules.exemple.fr` : **Git**.
+2. Choisissez **Dépôt Git distant**.
+3. **URL du dépôt** :
+   - Dépôt **privé** (cas le plus probable) : `git@github.com:hyde-binaryscribe/KotKot.git`
+   - Dépôt **public** : `https://github.com/hyde-binaryscribe/KotKot.git`
+4. **Si le dépôt est privé**, Plesk affiche une **clé SSH publique** (un long texte qui commence par `ssh-rsa` ou `ssh-ed25519`).
+   1. Copiez-la.
+   2. Sur GitHub : dépôt **KotKot** › **Settings** › **Deploy keys** › **Add deploy key**.
+   3. Titre : `Plesk`. Collez la clé. **Ne cochez pas** « Allow write access ». **Add key**.
+   4. Revenez dans Plesk.
+5. **Mode de déploiement** : **Automatique**.
+6. **Chemin du serveur** : le dossier du sous-domaine, par exemple `/poules.exemple.fr`.
+7. **OK**. Plesk télécharge le code ; la page Git affiche la branche **main** et le dernier changement.
+
+### 3 bis. Mises à jour automatiques (webhook)
+
+Pour que chaque modification arrive seule sur le site :
+
+1. Dans la page **Git** de Plesk, ouvrez les **paramètres du dépôt** et copiez l'**URL du webhook**.
+2. Sur GitHub : dépôt **KotKot** › **Settings** › **Webhooks** › **Add webhook**.
+3. **Payload URL** : collez l'URL. **Content type** : `application/json`. Événement : **Just the push event**. **Add webhook**.
+
+> Sans webhook, cliquez sur **Récupérer maintenant** puis **Déployer maintenant** dans Plesk après chaque mise à jour.
+
+---
+
+## 4. Faire pointer le site vers le dossier `public`
+
+C'est l'étape la plus importante pour la sécurité : seul le dossier `public` doit être visible sur internet. La base de données et les photos (`data/`) restent à côté, hors de portée.
+
+1. Dans le bloc de `poules.exemple.fr` : **Paramètres d'hébergement**.
+2. **Racine du document** : ajoutez `/public` à la fin, par exemple `poules.exemple.fr/public`.
+3. **OK**.
+
+> Si votre hébergeur ne permet pas de changer la racine, KotKot fonctionne quand même grâce au fichier `.htaccess` placé à la racine, qui redirige vers `public` et bloque `data`, `src` et `tools`. Mais cette protection ne marche qu'avec Apache (voir l'étape 6) : préférez vraiment la racine `public`.
+
+---
+
+## 5. Régler PHP
+
+1. Dans le bloc de `poules.exemple.fr` : **Paramètres PHP**.
+2. **Version de PHP** : **8.1 ou plus récente** (8.3 conseillée).
+3. **Gestionnaire** : « FPM servi par Apache » ou « FPM servi par nginx ».
+4. Dans la liste des réglages, mettez :
+
+   | Réglage | Valeur | Pourquoi |
+   |---|---|---|
+   | `upload_max_filesize` | `16M` | photos prises au téléphone |
+   | `post_max_size` | `20M` | idem |
+   | `memory_limit` | `256M` | redimensionner les photos |
+
+5. **OK**.
+
+**Extensions nécessaires** : `pdo_sqlite` (la base) et `gd` (les photos), plus `exif` en option (photos à l'endroit et datées automatiquement). Elles sont presque toujours actives. Si l'étape 7 affiche une erreur « could not find driver », demandez à votre hébergeur (ou dans **Outils et paramètres** › **Paramètres PHP** si vous êtes administrateur) d'activer `pdo_sqlite`.
+
+---
+
+## 6. Apache et nginx (à vérifier seulement en cas de souci)
+
+Dans **Apache et nginx**, laissez le **mode proxy** coché (réglage par défaut) : les fichiers `.htaccess` de KotKot sont alors bien pris en compte.
+
+---
+
+## 7. Premier lancement
+
+1. Sur votre téléphone, ouvrez **`https://poules.exemple.fr`**.
+2. L'écran **Bienvenue** s'affiche :
+   - les **prénoms** de ceux qui s'occupent des poules (4 au départ, d'autres plus tard dans Réglages) ;
+   - le **code de la famille** à 4 chiffres, tapé deux fois ;
+   - **Utiliser ma position** (ou tapez la ville et les coordonnées) pour les heures du soleil.
+3. **C'est parti** : vous arrivez sur l'accueil.
+4. **Réglages** › **Autoriser les rappels sur ce téléphone**.
+
+**Vérification de sécurité** (30 secondes) : ouvrez `https://poules.exemple.fr/data/kotkot.sqlite` et `https://poules.exemple.fr/tools/reset-pin.php`. Les deux doivent afficher une erreur (404 ou 403), **jamais** un téléchargement.
+
+---
+
+## 8. Installer l'appli sur chaque téléphone
+
+**Android (Chrome)** : ouvrez l'adresse › menu **⋮** › **Installer l'application** (ou **Ajouter à l'écran d'accueil**).
+
+**iPhone (Safari)** : ouvrez l'adresse › bouton **Partager** › **Sur l'écran d'accueil**.
+> Sur iPhone, les rappels ne fonctionnent que si KotKot a été ajouté à l'écran d'accueil et ouvert depuis l'icône (iOS 16.4 ou plus récent).
+
+Puis, sur chaque téléphone : touchez son prénom, tapez le code. Le téléphone reste connecté (plus d'un an), inutile de retaper le code chaque jour.
+
+---
+
+## 9. Sauvegardes (à ne pas oublier)
+
+Les poules, les œufs, les notes et les photos sont dans le dossier `data/` du serveur. **GitHub n'en garde pas de copie.**
+
+1. **Sites Web et domaines** › **Gestionnaire de sauvegarde** › **Planifier**.
+2. **Activer** la sauvegarde programmée : **chaque semaine**, contenu **Configuration et contenu** (les fichiers du domaine incluent `data/`).
+3. Conservez au moins **4 sauvegardes**. Si possible, envoyez-les vers un **stockage distant** (FTP, Google Drive, etc.).
+
+Pour récupérer à la main : **Gestionnaire de fichiers** › dossier du sous-domaine › `data` › téléchargez `kotkot.sqlite` et le dossier `photos`.
+
+> Les mises à jour par Git ne touchent jamais au dossier `data/`.
+
+---
+
+## 10. Dépannage
+
+| Ce que vous voyez | Cause probable | Que faire |
+|---|---|---|
+| Page « 403 » ou liste de fichiers | La racine ne pointe pas sur `public` | Étape 4 |
+| Page blanche ou « Erreur 500 » | Version de PHP trop ancienne, extension manquante | Étape 5, puis **Journaux** du domaine |
+| « could not find driver » dans les journaux | `pdo_sqlite` désactivé | Étape 5, extensions |
+| « Petit souci technique, réessayez » | Erreur côté serveur | **Journaux** : cherchez une ligne qui commence par `KotKot:` et envoyez-la |
+| « unable to open database file » | Le dossier `data/` n'est pas modifiable | **Gestionnaire de fichiers** › `data` › **Modifier les permissions** : droits d'écriture pour le propriétaire |
+| La photo ne s'envoie pas | Photo trop lourde | Étape 5 (`upload_max_filesize`, `post_max_size`) |
+| Le site ne se met pas à jour | Webhook absent ou en erreur | Étape 3 bis, ou **Déployer maintenant** dans Plesk |
+| Git : « Permission denied (publickey) » | Clé de déploiement absente | Étape 3, point 4 |
+| Pas de bouton « Installer l'application » | Le site n'est pas en HTTPS | Étape 2 |
+| « Trop d'essais. Réessayez dans … » | 5 codes faux de suite | Attendez le temps indiqué |
+
+### Code de la famille oublié
+
+Le code n'est stocké que sous forme chiffrée : personne ne peut le relire, mais on peut en choisir un nouveau.
+
+- **Sans SSH** : **Tâches planifiées** › **Ajouter une tâche** › **Exécuter un script PHP**.
+  - Chemin du script : `poules.exemple.fr/tools/reset-pin.php`
+  - Arguments : le nouveau code, par exemple `5678`
+  - Version de PHP : la même qu'à l'étape 5
+  - **Exécuter maintenant**, puis supprimez la tâche.
+- **Avec SSH** : depuis le dossier de KotKot, `php tools/reset-pin.php 5678`.
+
+Les téléphones déjà connectés le restent ; seuls les nouveaux devront taper le nouveau code.
+
+---
+
+## Récapitulatif
+
+- [ ] Sous-domaine créé
+- [ ] HTTPS Let's Encrypt + redirection
+- [ ] Dépôt Git branché (+ clé de déploiement si privé)
+- [ ] Webhook GitHub
+- [ ] Racine du document → `/public`
+- [ ] PHP 8.1+ et tailles d'envoi
+- [ ] Écran Bienvenue rempli
+- [ ] Vérification de sécurité de `data/`
+- [ ] Appli installée sur les téléphones
+- [ ] Sauvegarde hebdomadaire programmée
