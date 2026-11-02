@@ -19,6 +19,7 @@ $v = KK_VERSION;
   <link rel="apple-touch-icon" href="assets/icon-192.png">
   <link rel="preload" href="assets/fonts/atkinson-regular.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="assets/app.css?v=<?= $v ?>">
+  <script src="assets/breeds.js?v=<?= $v ?>" defer></script>
   <script src="assets/app.js?v=<?= $v ?>" defer></script>
 </head>
 <body>

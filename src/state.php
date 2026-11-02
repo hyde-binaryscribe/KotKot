@@ -7,21 +7,39 @@ declare(strict_types=1);
  */
 function app_state(): array
 {
+    $account = current_account();
     $device = current_device();
     $out = [
         'version' => KK_VERSION,
-        'setup' => setting('pin_hash') !== null,
+        'billing' => billing_enabled(),
+        'registration' => (bool) config('registration', true),
+        'account' => $account ? [
+            'email' => $account['email'],
+            'households' => account_households($account['id']),
+        ] : null,
         'auth' => $device !== null,
-        'people' => people(),
     ];
     if ($device === null) {
         return $out;
     }
 
+    $h = household();
     $now = now();
-    $today = $now->format('Y-m-d');
+    $premiumUntil = max((int) $h['trial_until'], (int) $h['premium_until']);
+    $out['household'] = [
+        'id' => (int) $h['id'],
+        'name' => $h['name'],
+        'inviteCode' => $h['invite_code'],
+        'hasOwner' => $h['owner_id'] !== null,
+        'isOwner' => $account !== null && (int) $h['owner_id'] === $account['id'],
+        'premium' => is_premium($h),
+        'trial' => billing_enabled() && (int) $h['premium_until'] <= now_ts() && (int) $h['trial_until'] > now_ts(),
+        'premiumUntil' => billing_enabled() && $premiumUntil > 0 ? $premiumUntil : null,
+        'freePhotos' => FREE_PHOTOS_PER_HEN,
+    ];
+    $out['people'] = people();
     $out['me'] = $device['person'];
-    $out['today'] = $today;
+    $out['today'] = $now->format('Y-m-d');
     $out['now'] = $now->getTimestamp();
     $out['settings'] = [
         'city' => setting('city', ''),
@@ -34,7 +52,61 @@ function app_state(): array
     $out['door'] = door_state($now, $out['settings']);
     $out['tasks'] = tasks_state($now);
     $out['hens'] = hens_list();
+    $out['health'] = health_state($now);
+    $out['push'] = ['publicKey' => vapid_public_key()];
     return $out;
+}
+
+/** Treatments to plan: for each hen (or the whole coop) and each kind, the latest entry decides. */
+function health_due(DateTimeImmutable $now, int $withinDays = 7): array
+{
+    $today = $now->format('Y-m-d');
+    $limit = $now->modify("+$withinDays days")->format('Y-m-d');
+    $rows = db()->query('SELECT h.id, h.hen_id, h.kind, h.day, h.next_due, hn.name AS hen
+        FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY COALESCE(hen_id, 0), kind ORDER BY day DESC, id DESC) AS rn
+              FROM health) h
+        LEFT JOIN hens hn ON hn.id = h.hen_id
+        WHERE h.rn = 1
+          AND h.next_due IS NOT NULL
+          AND (h.hen_id IS NULL OR hn.active = 1)
+        ORDER BY h.next_due')->fetchAll();
+    $out = [];
+    foreach ($rows as $r) {
+        if ($r['next_due'] > $limit) {
+            continue;
+        }
+        $out[] = [
+            'id' => (int) $r['id'],
+            'henId' => $r['hen_id'] !== null ? (int) $r['hen_id'] : null,
+            'hen' => $r['hen'],
+            'kind' => $r['kind'],
+            'lastDay' => $r['day'],
+            'due' => $r['next_due'],
+            'overdue' => $r['next_due'] < $today,
+            'today' => $r['next_due'] === $today,
+        ];
+    }
+    return $out;
+}
+
+function health_state(DateTimeImmutable $now): array
+{
+    $rows = db()->query('SELECT h.id, h.hen_id, h.kind, h.day, h.next_due, h.note, hn.name AS hen, p.name AS who
+        FROM health h LEFT JOIN hens hn ON hn.id = h.hen_id LEFT JOIN people p ON p.id = h.person_id
+        ORDER BY h.day DESC, h.id DESC LIMIT 60')->fetchAll();
+    return [
+        'due' => health_due($now),
+        'history' => array_map(fn ($r) => [
+            'id' => (int) $r['id'],
+            'henId' => $r['hen_id'] !== null ? (int) $r['hen_id'] : null,
+            'hen' => $r['hen'],
+            'kind' => $r['kind'],
+            'day' => $r['day'],
+            'nextDue' => $r['next_due'],
+            'note' => $r['note'],
+            'who' => $r['who'],
+        ], $rows),
+    ];
 }
 
 function eggs_state(DateTimeImmutable $now): array

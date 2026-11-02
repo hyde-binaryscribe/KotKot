@@ -1,9 +1,10 @@
 /* KotKot service worker: the app opens even without network. */
-const CACHE = 'kotkot-1.0.0';
+const CACHE = 'kotkot-2.0.0';
 const SHELL = [
   './',
-  'assets/app.css?v=1.0.0',
-  'assets/app.js?v=1.0.0',
+  'assets/app.css?v=2.0.0',
+  'assets/breeds.js?v=2.0.0',
+  'assets/app.js?v=2.0.0',
   'assets/icon.svg',
   'assets/icon-192.png',
   'assets/icon-512.png',
@@ -41,12 +42,27 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
 });
 
+// Reminders sent by the server (door left open, treatment to do).
+self.addEventListener('push', (event) => {
+  let msg = {};
+  try { msg = event.data ? event.data.json() : {}; } catch { msg = { body: event.data && event.data.text() }; }
+  event.waitUntil(self.registration.showNotification(msg.title || 'KotKot', {
+    body: msg.body || '',
+    tag: msg.tag || 'kotkot',
+    renotify: true,
+    icon: 'assets/icon-192.png',
+    badge: 'assets/icon-192.png',
+    data: { url: msg.url || './#/' },
+  }));
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || './#/', self.registration.scope).href;
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
       const open = list.find((c) => 'focus' in c);
-      return open ? open.focus().then((c) => c.navigate && c.navigate('./#/porte')) : self.clients.openWindow('./#/porte');
+      return open ? open.focus().then((c) => (c.navigate ? c.navigate(url) : c)) : self.clients.openWindow(url);
     })
   );
 });

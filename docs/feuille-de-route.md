@@ -2,11 +2,21 @@
 
 La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre proposé va du plus utile au plus « bonus ».
 
-## V2 — prochaine étape
-- [ ] **Rappels même appli fermée** (notifications push) pour la porte, la santé, les retards de tâches
-- [ ] **Carnet santé** : vermifuge, soins, poux, avec rappel du prochain traitement
-- [ ] **Aide à l'identification de la race** — questionnaire (plumage, crête, pattes, couleur des œufs) → 3 races possibles avec photo
-- [ ] **Aide à la race par photo** (IA) — en option, nécessite une clé d'API payante
+## V2 — fait
+- [x] **Comptes et poulaillers** : création en ligne, plusieurs poulaillers par compte, chaque famille séparée
+- [x] **Invitation** de la famille par code ou lien, code familial à 4 chiffres
+- [x] Mot de passe oublié, export des données (zip), suppression (RGPD)
+- [x] **Rappels même appli fermée** (notifications push) pour la porte et la santé
+- [x] **Carnet santé** : vermifuge, poux, vaccins, soins, avec rappel du prochain traitement
+- [x] **Aide à l'identification de la race** — questionnaire en 6 questions, 21 races
+- [x] Formule gratuite / Premium prête (album limité à 3 photos, rappels en Premium) — désactivée tant que `billing` est à `false`
+- [x] Vue ordinateur (accueil sur plusieurs colonnes)
+
+## V2.1 — prochaine étape
+- [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
+- [ ] **Pages légales** : mentions légales, CGV, confidentialité
+- [ ] **Aide à la race par photo** (IA Claude) — Premium, nécessite une clé d'API
+- [ ] Rappel des tâches hebdomadaires en retard
 
 ## V3 — poules et œufs
 - [ ] Mue et couvaison sur la fiche (explique la baisse de ponte)

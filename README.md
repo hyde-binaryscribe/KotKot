@@ -8,6 +8,16 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 - **Marche sans réseau** au fond du jardin : les clics sont gardés sur le téléphone et envoyés dès que ça capte.
 - S'installe comme une appli (PWA) : « Ajouter à l'écran d'accueil ».
 
+## Nouveautés V2
+
+- **Comptes et poulaillers** : chacun peut créer son poulailler en ligne ; un compte peut en gérer plusieurs ; les familles sont totalement séparées (une base de données par poulailler).
+- **Inviter la famille** par un code ou un lien ; chacun garde le code familial à 4 chiffres.
+- **Carnet santé** : vermifuge, poux, vaccins, soins, avec la date du prochain traitement et un bandeau d'alerte.
+- **Aide à la race** : 6 questions simples → les 3 races les plus probables.
+- **Rappels même appli fermée** (porte restée ouverte, soins) grâce à une tâche planifiée.
+- Mot de passe oublié, **export** de toutes les données, **suppression** du compte (RGPD).
+- Formule gratuite / Premium prête, désactivée par défaut (`config.php`).
+
 ## Ce que fait la V1
 
 | Écran | Contenu |
@@ -30,8 +40,10 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 
 ```
 public/        ← racine web (index.php, api.php, sw.js, assets/)
-src/           ← code serveur (base, règles, actions)
-data/          ← base + photos (jamais publiés, jamais sur GitHub)
+src/           ← code serveur (comptes, foyers, actions, rappels)
+data/          ← central.sqlite + foyers/<n>/ (base + photos), jamais publiés ni sur GitHub
+tools/         ← cron.php (rappels, toutes les 5 min), reset-pin.php
+config.php     ← réglages du site (copie de config.example.php, jamais sur GitHub)
 tests/         ← php tests/api_test.php
 docs/          ← charte graphique
 ```
@@ -61,7 +73,9 @@ En bref :
 
 ```bash
 php -S localhost:8000 -t public     # puis http://localhost:8000
-php tests/api_test.php              # 24 vérifications de bout en bout
+php tests/api_test.php              # parcours complets : comptes, familles, cloisonnement…
+php tests/push_test.php             # chiffrement des rappels (exemple officiel RFC 8291)
+php tests/reminders_test.php        # rappels porte/santé, passage de la V1 à la V2
 ```
 
 ## Licence des polices

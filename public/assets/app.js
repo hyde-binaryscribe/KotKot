@@ -29,6 +29,9 @@
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>',
     bell: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg>',
     camera: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>',
+    share: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="M8.6 13.5l6.8 4M15.4 6.5l-6.8 4"/></svg>',
+    user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg>',
+    heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/><path d="M8 11h2l1-2 2 4 1-2h2"/></svg>',
     pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   };
 
@@ -102,7 +105,6 @@
     }
     loaded = true;
     render();
-    checkDoorReminder();
   }
 
   /** Changes that must never be lost: kept on the phone until the server has them. */
@@ -170,6 +172,14 @@
   let errorText = '';
   function showError(text) { errorText = text; render(); }
 
+  /** Re-render without losing what was typed in the form (for in-form toggles). */
+  function keepForm(fn) {
+    const values = {};
+    app.querySelectorAll('input[id], select[id], textarea[id]').forEach((el) => { values[el.id] = el.value; });
+    fn();
+    Object.entries(values).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
+  }
+
   // ------------------------------------------------------------------ navigation
   const go = (hash) => { if (location.hash !== hash) location.hash = hash; else render(); };
   window.addEventListener('hashchange', () => { errorText = ''; render(); window.scrollTo(0, 0); });
@@ -199,10 +209,17 @@
     if (!loaded && !S.auth) { app.innerHTML = '<p class="loading">Chargement…</p>'; return; }
     let html;
     const r = route();
-    if (!S.setup) html = viewSetup();
-    else if (!S.auth) html = viewLogin();
-    else {
-      const views = { accueil: viewHome, oeufs: viewEggs, porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks, poules: viewHens, poule: viewHen, reglages: viewSettings, qui: viewWho };
+    if (!S.auth) {
+      const open = { creer: viewSignup, connexion: viewAccountLogin, rejoindre: viewJoin, 'mot-de-passe-oublie': viewForgot, 'nouveau-mot-de-passe': viewReset, foyer: viewHouseholdCreate };
+      if (open[r.name]) html = open[r.name](r);
+      else html = S.account ? viewMyHouseholds() : viewWelcome();
+    } else {
+      const views = {
+        accueil: viewHome, oeufs: viewEggs, porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
+        poules: viewHens, poule: viewHen, reglages: viewSettings, qui: viewWho, sante: viewHealth, race: viewBreed,
+        compte: viewAccount, premium: viewPremium, foyer: viewHouseholdCreate, connexion: viewAccountLogin,
+        'nouveau-mot-de-passe': viewReset, 'mot-de-passe-oublie': viewForgot, rejoindre: viewJoin,
+      };
       html = (views[r.name] || viewHome)(r);
     }
     app.innerHTML = html;
@@ -212,27 +229,38 @@
   function afterRender() {
     // PIN pad keeps its own state so focus is not lost between taps
     if (app.querySelector('.pad')) updateDots();
+    if (app.querySelector('[data-push-status]')) refreshPushStatus();
   }
 
-  // ---------- première installation
-  function viewSetup() {
+  // ---------- bienvenue (personne de connecté)
+  function viewWelcome() {
+    const last = store.get('kk-join', null);
     return `
-      <div class="brand">${I.egg} KotKot</div>
-      <h1>Bienvenue !</h1>
-      <p class="muted">Quelques réglages, une seule fois, pour tout le foyer.</p>
+      <div class="brand" style="justify-content:center;margin-top:1rem">${I.egg} KotKot</div>
+      <h1 style="text-align:center">Le poulailler de la famille</h1>
+      <p class="muted" style="text-align:center;margin:0">Les œufs, les tâches, les poules et la porte, sur le téléphone de chacun.</p>
       ${err()}
-      <form class="stack" data-form="setup">
-        <div class="field"><span class="lab">Qui s'occupe des poules ?</span>
-          ${[1, 2, 3, 4].map((i) => `<input name="person" autocomplete="off" placeholder="Prénom ${i}" aria-label="Prénom ${i}" maxlength="40">`).join('')}
-          <span class="muted">Vous pourrez en ajouter d'autres plus tard.</span>
-        </div>
-        <div class="field"><label for="pin1">Code de la famille (4 chiffres)</label>
-          <input id="pin1" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></div>
-        <div class="field"><label for="pin2">Retapez le code</label>
-          <input id="pin2" name="pin2" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></div>
-        ${locationFields({})}
-        <button class="btn primary big block" type="submit">C'est parti</button>
-      </form>`;
+      ${last ? `<a class="btn primary big" href="#/rejoindre/${h(last.code)}">${I.hen} Revenir dans « ${h(last.name)} »</a>` : ''}
+      <a class="btn ${last ? '' : 'primary'} big" href="#/rejoindre">${I.door} Rejoindre ma famille</a>
+      <p class="muted" style="margin:-.4rem 0 0;text-align:center">Avec le code d'invitation donné par un proche.</p>
+      ${S.registration ? `<a class="btn big" href="#/creer">${I.plus} Créer mon poulailler</a>` : ''}
+      <a class="btn" href="#/connexion">J'ai déjà un compte</a>`;
+  }
+
+  // ---------- créer un compte + un poulailler
+  function householdFields() {
+    return `
+      <div class="field"><label for="hname">Nom du poulailler</label>
+        <input id="hname" name="householdName" maxlength="60" required placeholder="Ex. Les poules de la famille Martin"></div>
+      <div class="field"><span class="lab">Qui s'occupe des poules ?</span>
+        ${[1, 2, 3, 4].map((i) => `<input name="person" autocomplete="off" placeholder="Prénom ${i}" aria-label="Prénom ${i}" maxlength="40">`).join('')}
+        <span class="muted">Vous pourrez en ajouter d'autres plus tard.</span></div>
+      <div class="field"><label for="pin1">Code de la famille (4 chiffres)</label>
+        <input id="pin1" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required>
+        <span class="muted">Chacun le tapera une fois sur son téléphone.</span></div>
+      <div class="field"><label for="pin2">Retapez le code</label>
+        <input id="pin2" name="pin2" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" required></div>
+      ${locationFields({})}`;
   }
 
   function locationFields(s) {
@@ -247,20 +275,144 @@
       <p class="muted" style="margin:0">Sert seulement à calculer le lever et le coucher du soleil.</p>`;
   }
 
-  // ---------- code familial
+  function viewSignup() {
+    return `
+      ${back('#/', 'Retour')}
+      <h1>Créer mon poulailler</h1>
+      ${S.billing ? '<p class="muted" style="margin:0">Gratuit, avec 30 jours de Premium offerts. Sans carte bancaire.</p>' : ''}
+      ${err()}
+      <form class="stack" data-form="signup">
+        <h2>Votre compte</h2>
+        <p class="muted" style="margin:0">Pour retrouver votre poulailler sur un autre téléphone. Seul le responsable du foyer en a besoin.</p>
+        <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required maxlength="190"></div>
+        <div class="field"><label for="pw">Mot de passe (8 caractères ou plus)</label><input id="pw" name="password" type="password" autocomplete="new-password" required minlength="8"></div>
+        <h2>Votre poulailler</h2>
+        ${householdFields()}
+        <button class="btn primary big block" type="submit">C'est parti</button>
+      </form>`;
+  }
+
+  function viewHouseholdCreate() {
+    if (!S.account) return viewAccountLogin();
+    return `
+      ${back(S.auth ? '#/compte' : '#/', 'Retour')}
+      <h1>Nouveau poulailler</h1>
+      ${err()}
+      <form class="stack" data-form="householdCreate">${householdFields()}
+        <button class="btn primary big block" type="submit">Créer</button></form>`;
+  }
+
+  function signupPayload(fd) {
+    const pin = fd.get('pin');
+    if (!/^\d{4}$/.test(pin)) throw new Error('Le code de la famille doit faire exactement 4 chiffres.');
+    if (pin !== fd.get('pin2')) throw new Error('Les deux codes ne sont pas pareils.');
+    const people = fd.getAll('person').map((s) => s.trim()).filter(Boolean);
+    if (!people.length) throw new Error('Indiquez au moins un prénom.');
+    return { householdName: fd.get('householdName'), people, pin, city: fd.get('city'), lat: fd.get('lat'), lon: fd.get('lon') };
+  }
+
+  // ---------- compte : connexion, mot de passe
+  function viewAccountLogin() {
+    return `
+      ${back(S.auth ? '#/reglages' : '#/', 'Retour')}
+      <h1>Connexion</h1>
+      <p class="muted" style="margin:0">Espace du responsable du poulailler.</p>
+      ${err()}
+      <form class="stack" data-form="accountLogin">
+        <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required></div>
+        <div class="field"><label for="pw">Mot de passe</label><input id="pw" name="password" type="password" autocomplete="current-password" required></div>
+        <button class="btn primary big block" type="submit">Se connecter</button>
+      </form>
+      <a class="btn" href="#/mot-de-passe-oublie">Mot de passe oublié ?</a>
+      ${S.registration && !S.auth ? '<a class="btn ghost" href="#/creer">Créer un compte</a>' : ''}`;
+  }
+
+  let forgotMessage = '';
+  function viewForgot() {
+    return `
+      ${back('#/connexion', 'Connexion')}
+      <h1>Mot de passe oublié</h1>
+      ${err()}
+      ${forgotMessage ? `<div class="card" role="status"><b>${h(forgotMessage)}</b></div>` : `
+      <p class="muted" style="margin:0">Indiquez votre e-mail : nous vous envoyons un lien pour choisir un nouveau mot de passe.</p>
+      <form class="stack" data-form="forgot">
+        <div class="field"><label for="email">E-mail</label><input id="email" name="email" type="email" autocomplete="email" required></div>
+        <button class="btn primary big block" type="submit">Envoyer le lien</button>
+      </form>`}`;
+  }
+
+  function viewReset(r) {
+    return `
+      <h1>Nouveau mot de passe</h1>
+      ${err()}
+      <form class="stack" data-form="reset" data-token="${h(r.id || '')}">
+        <div class="field"><label for="pw">Nouveau mot de passe (8 caractères ou plus)</label><input id="pw" name="password" type="password" autocomplete="new-password" minlength="8" required></div>
+        <button class="btn primary big block" type="submit">Enregistrer</button>
+      </form>`;
+  }
+
+  /** Account connected but this phone is in no household: choose one. */
+  function viewMyHouseholds() {
+    const list = S.account.households;
+    return `
+      <div class="topbar"><div class="brand">${I.egg} KotKot</div>
+        <button class="btn" type="button" data-act="accountLogout">Déconnexion</button></div>
+      <h1>Mes poulaillers</h1>
+      <p class="muted" style="margin:0">${h(S.account.email)}</p>
+      ${err()}
+      <div class="stack">
+        ${list.map((x) => `<button class="tile" type="button" data-act="enterHousehold" data-id="${x.id}">${I.hen}<span class="t-title">${h(x.name)}</span></button>`).join('') || '<p class="muted">Aucun poulailler pour l\'instant.</p>'}
+      </div>
+      <a class="btn primary" href="#/foyer/nouveau">${I.plus} Créer un poulailler</a>`;
+  }
+
+  // ---------- rejoindre un poulailler : code d'invitation, puis qui + code familial
+  let joinInfo = null;
   let pinBuffer = '';
   let loginWho = store.get('kk-last-person', null);
 
-  function viewLogin() {
-    if (!S.people.some((p) => p.id === loginWho)) loginWho = S.people[0]?.id ?? null;
+  function viewJoin(r) {
+    const code = (r.id || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (code && joinInfo?.code !== code) {
+      lookupJoin(code);
+      return '<p class="loading">Recherche du poulailler…</p>';
+    }
+    if (!code || !joinInfo) {
+      return `
+        ${back('#/', 'Retour')}
+        <h1>Rejoindre ma famille</h1>
+        <p class="muted" style="margin:0">Demandez le <b>code d'invitation</b> à la personne qui a créé le poulailler (dans ses Réglages).</p>
+        ${err()}
+        <form class="stack" data-form="joinCode">
+          <div class="field"><label for="code">Code d'invitation</label>
+            <input id="code" name="code" autocomplete="off" autocapitalize="characters" maxlength="12" required placeholder="Ex. KR7P-2XM9" style="font-size:1.6rem;letter-spacing:.15em;text-transform:uppercase"></div>
+          <button class="btn primary big block" type="submit">Continuer</button>
+        </form>`;
+    }
+    if (!joinInfo.people.some((p) => p.id === loginWho)) loginWho = joinInfo.people[0]?.id ?? null;
     return `
-      <div class="brand" style="justify-content:center">${I.egg} KotKot</div>
-      <h1 style="text-align:center;font-size:1.45rem">Qui êtes-vous ?</h1>
+      ${back('#/', 'Retour')}
+      <h1 style="text-align:center;font-size:1.45rem">${h(joinInfo.name)}</h1>
+      <p style="text-align:center;margin:0">Qui êtes-vous ?</p>
       <div class="people-pick">
-        ${S.people.map((p) => `<button type="button" class="person" data-act="loginWho" data-id="${p.id}" aria-pressed="${p.id === loginWho}">${avatar(p)}<span>${h(p.name)}</span></button>`).join('')}
+        ${joinInfo.people.map((p) => `<button type="button" class="person" data-act="loginWho" data-id="${p.id}" aria-pressed="${p.id === loginWho}">${avatar(p)}<span>${h(p.name)}</span></button>`).join('')}
       </div>
       ${err()}
       ${pinPad('Code de la famille')}`;
+  }
+
+  async function lookupJoin(code) {
+    try {
+      const data = await post('join_lookup', { code });
+      joinInfo = data.join;
+      errorText = '';
+    } catch (e) {
+      joinInfo = null;
+      errorText = e.status === 0 ? 'Pas de connexion internet.' : e.message;
+      if (store.get('kk-join', null)?.code === code) store.set('kk-join', null);
+      location.hash = '#/rejoindre';
+    }
+    render();
   }
 
   function pinPad(label) {
@@ -286,8 +438,9 @@
     const pin = pinBuffer;
     pinBuffer = '';
     try {
-      const data = await post('login', { pin, personId: loginWho });
+      const data = await post('join_login', { code: joinInfo.code, pin, personId: loginWho });
       store.set('kk-last-person', loginWho);
+      store.set('kk-join', { code: joinInfo.code, name: joinInfo.name });
       errorText = '';
       setState(data.state);
       go('#/');
@@ -307,7 +460,6 @@
       </div>
       ${err()}`;
   }
-
   // ---------- accueil
   function doorInfo() {
     const d = S.door || {};
@@ -331,6 +483,16 @@
     return { done: due.filter((t) => t.done).length, total: due.length };
   }
 
+  function healthBanner() {
+    const now = (S.health?.due || []).filter((d) => d.overdue || d.today);
+    if (!now.length) return '';
+    const d = now[0];
+    const more = now.length > 1 ? ` (+${now.length - 1})` : '';
+    return `<a class="door-banner alert" href="#/sante"><span class="badge">${I.heart}</span>
+      <span class="grow"><span class="d-title" style="display:block">${h(HEALTH[d.kind]?.label || 'Soin')} à faire${more}</span>
+      <span class="d-sub">${h(d.hen || 'Tout le poulailler')} · ${dueText(d)}</span></span>${I.chev}</a>`;
+  }
+
   function viewHome() {
     const d = doorInfo();
     const tc = taskCounts();
@@ -350,6 +512,7 @@
         <span class="grow"><span class="d-title" style="display:block">${h(d.title)}</span><span class="d-sub">${h(d.sub)}</span></span>
         ${I.chev}
       </a>
+      ${healthBanner()}
       <nav class="home-tiles" aria-label="Menu principal">
         <a class="tile yolk" href="#/oeufs">${I.egg}<span><span class="t-title" style="display:block">Œufs</span><span class="t-sub">${S.eggs?.today ?? 0} aujourd'hui</span></span></a>
         <a class="tile" href="#/taches">${I.tasks}<span><span class="t-title" style="display:block">Tâches</span><span class="t-sub">${tc.done} faite${tc.done > 1 ? 's' : ''} sur ${tc.total}</span></span></a>
@@ -510,6 +673,10 @@
       <div class="row between"><h1>Mes poules</h1><b style="font-size:1.15rem">${plural(hens.length, 'poule', 'poules')}</b></div>
       <a class="btn primary" href="#/poule/nouvelle">${I.plus} Ajouter une poule</a>
       <div class="grid2">
+        <a class="btn" href="#/sante">${I.heart} Carnet santé${S.health?.due.length ? ` (${S.health.due.length})` : ''}</a>
+        <a class="btn" href="#/race">Quelle race ?</a>
+      </div>
+      <div class="grid2">
         ${hens.map((x) => `<a class="hen-card" href="#/poule/${x.id}">${henAvatar(x, 'xl')}<span class="name">${h(x.name)}</span>
           ${x.breed ? `<span class="muted">${h(x.breed)}</span>` : ''}
           <span class="pill ${x.status === 'watch' ? 'watch' : ''}">${x.status === 'watch' ? 'À surveiller' : 'En forme'}</span></a>`).join('')}
@@ -564,12 +731,26 @@
           <button class="btn" type="button" data-act="photoRemove" data-id="${hen.id}" data-photo-id="${p.id}" style="min-height:2.8rem;padding:.2rem .6rem">Suppr.</button>
         </figure>`).join('')}
       </div>` : '<p class="muted" style="margin:0">Prenez-la en photo de temps en temps (par exemple chaque mois) pour voir comment elle grandit.</p>'}
+      ${!S.household?.premium && photos.length >= S.household.freePhotos ? `
+      <div class="card stack"><b>L'album gratuit garde ${S.household.freePhotos} photos par poule.</b>
+        <a class="btn primary" href="#/premium">Album illimité avec Premium</a></div>` : `
       <div class="card stack">
         <div class="field"><label for="pdate">Date de la photo</label>
           <input id="pdate" type="date" max="${today}" value="${h(photoDate)}" data-photo-date>
           <span class="muted">Laissez vide pour la date d'aujourd'hui (ou celle de l'appareil photo).</span></div>
         <label class="btn primary">${I.camera} Ajouter une photo<input class="sr" type="file" accept="image/*" data-photo="${hen.id}"></label>
-      </div>`;
+      </div>`}`;
+  }
+
+  function henHealth(hen) {
+    const hs = S.health || { due: [], history: [] };
+    const due = hs.due.filter((d) => d.henId === hen.id || d.henId === null);
+    const hist = hs.history.filter((x) => x.henId === hen.id).slice(0, 3);
+    return `
+      <h2>Santé</h2>
+      ${due.map((d) => `<div class="card ${d.overdue ? 'alert-card' : ''}"><b>${h(HEALTH[d.kind]?.label || d.kind)}${d.henId ? '' : ' (tout le poulailler)'}</b> · ${dueText(d)}</div>`).join('')}
+      ${hist.map((x) => `<div class="kv"><span>${h(HEALTH[x.kind]?.label || x.kind)}</span><span class="muted">${h(fmtLongDay(x.day))}</span></div>`).join('')}
+      <a class="btn" href="#/sante/${hen.id}">${I.heart} Noter un soin</a>`;
   }
 
   function viewHen(r) {
@@ -600,6 +781,8 @@
           <p style="margin:.4rem 0 0;white-space:pre-line">${h(n.text)}</p></div>`).join('')}
       </div>
       ${albumSection(hen)}
+      ${henHealth(hen)}
+      ${hen.breed ? '' : `<a class="btn" href="#/race/${hen.id}">Trouver sa race</a>`}
       <a class="btn" href="#/poule/${hen.id}/modifier">Modifier la fiche</a>
       <button class="btn danger" type="button" data-act="henRemove" data-id="${hen.id}">Retirer du poulailler</button>`;
   }
@@ -614,6 +797,7 @@
       <form class="stack" data-form="hen" data-id="${hen ? hen.id : ''}">
         <div class="field"><label for="f-name">Son nom</label><input id="f-name" name="name" value="${h(v.name)}" maxlength="40" required></div>
         ${field('breed', 'Race ou couleur', 'Ex. Rousse')}
+        ${hen ? `<a href="#/race/${hen.id}" style="margin-top:-.5rem">Je ne sais pas : m'aider à trouver sa race</a>` : ''}
         ${field('arrived', 'Arrivée', 'Ex. mars 2025', 30)}
         ${field('mark', 'Signe distinctif', 'Ex. bague bleue', 80)}
         ${field('eggColor', 'Couleur des œufs', 'Ex. brun clair', 30)}
@@ -641,27 +825,35 @@
   // ---------- réglages
   function viewSettings() {
     const s = S.settings || {};
+    const hh = S.household || {};
     const size = String(store.get('kk-size', 1));
-    const notif = 'Notification' in window ? Notification.permission : 'unsupported';
     return `
       ${back('#/', 'Accueil')}
       <h1>Réglages</h1>
       ${err()}
+      <div class="card stack">
+        <h2 style="margin:0">Inviter la famille</h2>
+        <p style="margin:0">Sur le téléphone d'un proche : ouvrir KotKot, « Rejoindre ma famille », puis taper ce code.</p>
+        <div class="invite" aria-label="Code d'invitation">${h(fmtCode(hh.inviteCode))}</div>
+        <button class="btn primary" type="button" data-act="shareInvite">${I.share} Envoyer l'invitation</button>
+        <button class="btn" type="button" data-act="regenInvite">Changer le code</button>
+        <p class="muted" style="margin:0">Changer le code empêche de nouveaux téléphones d'entrer avec l'ancien. Les téléphones déjà connectés le restent.</p>
+      </div>
       <div class="card stack">
         <h2 style="margin:0">Taille du texte</h2>
         <div class="seg">${[['1', 'Normal'], ['2', 'Grand'], ['3', 'Très grand']].map(([v, l]) => `<button type="button" data-act="size" data-v="${v}" aria-pressed="${size === v}">${l}</button>`).join('')}</div>
         <p class="muted" style="margin:0">Seulement sur ce téléphone.</p>
       </div>
       <div class="card stack">
-        <h2 style="margin:0">Rappel pour fermer la porte</h2>
+        <h2 style="margin:0">Rappels sur ce téléphone</h2>
+        <p style="margin:0">Pour la porte restée ouverte le soir et les soins à faire, même quand KotKot est fermé.</p>
+        <div class="stack" data-push-status><p class="muted" style="margin:0">Vérification…</p></div>
+        <span class="lab">Rappel pour la porte, après le coucher du soleil :</span>
         <div class="seg">${[15, 30, 60].map((m) => `<button type="button" data-act="delay" data-v="${m}" aria-pressed="${s.reminderDelay === m}">${m === 60 ? '1 h' : m + ' min'}</button>`).join('')}</div>
-        <p class="muted" style="margin:0">après le coucher du soleil.</p>
-        ${notif === 'unsupported' ? '' : notif === 'granted'
-          ? '<p class="hint">' + I.bell + '<span>Les rappels s\'affichent sur ce téléphone quand KotKot est ouvert ou en arrière-plan.</span></p>'
-          : `<button class="btn" type="button" data-act="notify">${I.bell} Autoriser les rappels sur ce téléphone</button>`}
       </div>
       <form class="card stack" data-form="location">
         <h2 style="margin:0">Le poulailler</h2>
+        <div class="field"><label for="hn">Nom</label><input id="hn" name="householdName" value="${h(hh.name || '')}" maxlength="60" required></div>
         ${locationFields(s)}
         <button class="btn primary" type="submit">Enregistrer</button>
       </form>
@@ -681,27 +873,265 @@
         </div>
         <button class="btn" type="submit">Changer le code</button>
       </form>
+      ${responsibleSection()}
       <a class="btn" href="#/taches/gerer">${I.tasks} Gérer les tâches</a>
       <button class="btn danger" type="button" data-act="logout">Déconnecter ce téléphone</button>
       <p class="muted" style="text-align:center">KotKot ${h(S.version || '')}</p>`;
   }
 
-  function applySize() { document.documentElement.dataset.size = String(store.get('kk-size', 1)); }
-
-  // ------------------------------------------------------------------ rappels (porte)
-  async function checkDoorReminder() {
-    const d = S.door;
-    if (!d?.shouldClose || !('Notification' in window) || Notification.permission !== 'granted') return;
-    const key = `door-${d.remindAt}`;
-    if (store.get('kk-notified', '') === key) return;
-    store.set('kk-notified', key);
-    try {
-      const reg = await navigator.serviceWorker?.ready;
-      const opts = { body: 'Pensez à fermer la porte du poulailler !', tag: 'kotkot-door', icon: 'assets/icon-192.png', badge: 'assets/icon-192.png' };
-      if (reg) reg.showNotification('KotKot', opts); else new Notification('KotKot', opts);
-    } catch { /* notifications indisponibles */ }
+  /** Account holder's area: link, sign-in, or "become responsible" for a V1 household. */
+  function responsibleSection() {
+    const hh = S.household || {};
+    if (hh.isOwner) {
+      return `<a class="btn" href="#/compte">${I.user} Mon compte et mon abonnement</a>`;
+    }
+    if (!hh.hasOwner) {
+      return `
+        <form class="card stack" data-form="claim">
+          <h2 style="margin:0">Devenir responsable du poulailler</h2>
+          <p style="margin:0">Un e-mail et un mot de passe pour retrouver le poulailler sur un nouveau téléphone, exporter les données ou gérer l'abonnement.</p>
+          <div class="field"><label for="cemail">E-mail</label><input id="cemail" name="email" type="email" autocomplete="email" required></div>
+          <div class="field"><label for="cpw">Mot de passe (8 caractères ou plus)</label><input id="cpw" name="password" type="password" autocomplete="new-password" minlength="8" required></div>
+          <div class="field"><label for="cpin">Code de la famille</label><input id="cpin" name="pin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off"></div>
+          <button class="btn primary" type="submit">Créer mon accès responsable</button>
+        </form>`;
+    }
+    return `<a class="btn" href="#/connexion">${I.user} Espace du responsable</a>`;
   }
 
+  const fmtCode = (c) => (c ? `${c.slice(0, 4)}-${c.slice(4)}` : '—');
+  const inviteUrl = () => new URL(`#/rejoindre/${S.household.inviteCode}`, location.href.split('#')[0]).href;
+
+  // ---------- mon compte (responsable)
+  function viewAccount() {
+    if (!S.account) return viewAccountLogin();
+    const hh = S.household || {};
+    return `
+      ${back('#/reglages', 'Réglages')}
+      <h1>Mon compte</h1>
+      <p class="muted" style="margin:0">${h(S.account.email)}</p>
+      ${err()}
+      ${premiumCard()}
+      <div class="card stack">
+        <h2 style="margin:0">Mes poulaillers</h2>
+        <div class="list">${S.account.households.map((x) => `<div class="stack" style="gap:.5rem">
+          <b>${h(x.name)}${x.id === hh.id ? ' <span class="pill">ce téléphone</span>' : ''}</b>
+          <div class="grid2">
+            ${x.id === hh.id ? '' : `<button class="btn" type="button" data-act="enterHousehold" data-id="${x.id}">Ouvrir ici</button>`}
+            <a class="btn" href="${API}?a=export&id=${x.id}" download>Exporter</a>
+          </div>
+          <details><summary class="muted" style="cursor:pointer;min-height:2.8rem;padding:.6rem 0">Supprimer ce poulailler…</summary>
+            <form class="stack" data-form="householdDelete" data-id="${x.id}">
+              <p style="margin:0">Tout sera effacé pour toute la famille : œufs, poules, photos, carnet. <b>C'est définitif.</b> Pensez à exporter avant.</p>
+              <div class="field"><label for="dpw${x.id}">Votre mot de passe pour confirmer</label><input id="dpw${x.id}" name="password" type="password" autocomplete="current-password" required></div>
+              <button class="btn danger" type="submit">Supprimer « ${h(x.name)} »</button>
+            </form></details>
+        </div>`).join('')}</div>
+        <a class="btn primary" href="#/foyer/nouveau">${I.plus} Créer un autre poulailler</a>
+      </div>
+      <form class="card stack" data-form="pinReset">
+        <h2 style="margin:0">Code de la famille oublié ?</h2>
+        <div class="field"><label for="rp">Nouveau code (4 chiffres)</label><input id="rp" name="newPin" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" required autocomplete="off"></div>
+        <button class="btn" type="submit">Enregistrer le nouveau code</button>
+      </form>
+      <form class="card stack" data-form="passwordChange">
+        <h2 style="margin:0">Mot de passe</h2>
+        <div class="field"><label for="opw">Mot de passe actuel</label><input id="opw" name="oldPassword" type="password" autocomplete="current-password" required></div>
+        <div class="field"><label for="npw">Nouveau mot de passe</label><input id="npw" name="newPassword" type="password" autocomplete="new-password" minlength="8" required></div>
+        <button class="btn" type="submit">Changer le mot de passe</button>
+      </form>
+      <button class="btn" type="button" data-act="accountLogout">Se déconnecter du compte</button>
+      <details class="card"><summary style="cursor:pointer;font-weight:700;min-height:2.8rem">Supprimer mon compte…</summary>
+        <form class="stack" data-form="accountDelete" style="margin-top:.6rem">
+          <p style="margin:0">Votre compte et <b>tous vos poulaillers</b> seront effacés. C'est définitif.</p>
+          <div class="field"><label for="apw">Votre mot de passe pour confirmer</label><input id="apw" name="password" type="password" autocomplete="current-password" required></div>
+          <button class="btn danger" type="submit">Supprimer mon compte</button>
+        </form></details>`;
+  }
+
+  // ---------- Premium
+  const PREMIUM_FEATURES = [
+    'Rappels sur le téléphone, même appli fermée (porte, soins)',
+    'Album photo illimité pour suivre la croissance',
+    'Toutes les nouveautés à venir (statistiques, mode vacances…)',
+  ];
+
+  function premiumCard() {
+    const hh = S.household || {};
+    if (!S.billing) return '<div class="card"><b>Tout est inclus</b><p class="muted" style="margin:.3rem 0 0">Ce site n\'a pas d\'abonnement : toutes les fonctions sont disponibles.</p></div>';
+    const until = hh.premiumUntil ? new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(hh.premiumUntil * 1000)) : '';
+    if (hh.premium) {
+      return `<div class="card stack"><b>${hh.trial ? 'Essai Premium' : 'Premium'} jusqu'au ${h(until)}</b>
+        <a class="btn" href="#/premium">Voir Premium</a></div>`;
+    }
+    return `<div class="card stack"><b>Version gratuite</b><a class="btn primary" href="#/premium">Découvrir Premium</a></div>`;
+  }
+
+  function viewPremium() {
+    return `
+      ${back('#/reglages', 'Réglages')}
+      <h1>KotKot Premium</h1>
+      ${premiumCard()}
+      <div class="card list">${PREMIUM_FEATURES.map((f) => `<div class="row">${I.check}<span>${h(f)}</span></div>`).join('')}</div>
+      <p class="muted">Toujours gratuit : œufs, tâches, porte, poules sans limite, carnet santé, aide à la race.</p>
+      ${S.billing && !S.household?.premium ? '<div class="card"><b>Le paiement en ligne arrive très bientôt.</b><p class="muted" style="margin:.3rem 0 0">Vous serez prévenu par e-mail.</p></div>' : ''}`;
+  }
+
+  // ---------- carnet santé
+  const HEALTH = {
+    vermifuge: { label: 'Vermifuge', next: 180 },
+    parasites: { label: 'Anti-poux / acariens', next: 30 },
+    vaccin: { label: 'Vaccin', next: 0 },
+    soin: { label: 'Soin / blessure', next: 0 },
+    veto: { label: 'Vétérinaire', next: 0 },
+    autre: { label: 'Autre', next: 0 },
+  };
+  const NEXT_CHOICES = [[0, 'Pas de rappel'], [30, 'Dans 1 mois'], [90, 'Dans 3 mois'], [180, 'Dans 6 mois']];
+  const addDays = (iso, days) => { const d = new Date(iso + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + days); return d.toISOString().slice(0, 10); };
+  const daysBetween = (a, b) => Math.round((new Date(b + 'T12:00:00Z') - new Date(a + 'T12:00:00Z')) / 86400000);
+  const fmtLongDay = (iso) => new Intl.DateTimeFormat('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(iso + 'T12:00:00Z'));
+
+  function dueText(d) {
+    const late = daysBetween(d.due, S.today);
+    if (late > 0) return `en retard de ${plural(late, 'jour', 'jours')}`;
+    if (late === 0) return "c'est aujourd'hui";
+    return `dans ${plural(-late, 'jour', 'jours')}`;
+  }
+
+  let healthKind = 'vermifuge';
+  let healthNext = 180;
+
+  function viewHealth(r) {
+    const hens = S.hens || [];
+    const preHen = r.id ? Number(r.id) : 0;
+    const hs = S.health || { due: [], history: [] };
+    const today = S.today;
+    return `
+      ${back(preHen ? `#/poule/${preHen}` : '#/poules', preHen ? 'La poule' : 'Mes poules')}
+      <h1>Carnet santé</h1>
+      ${err()}
+      ${hs.due.length ? `<h2>À faire</h2><div class="stack">${hs.due.map((d) => `
+        <div class="card stack ${d.overdue ? 'alert-card' : ''}">
+          <b>${h(HEALTH[d.kind]?.label || d.kind)} · ${h(d.hen || 'tout le poulailler')}</b>
+          <span>${dueText(d)} (dernier : ${h(fmtLongDay(d.lastDay))})</span>
+          <button class="btn primary" type="button" data-act="healthDone" data-kind="${h(d.kind)}" data-hen="${d.henId || ''}" data-every="${daysBetween(d.lastDay, d.due)}">${I.check} C'est fait aujourd'hui</button>
+        </div>`).join('')}</div>` : '<div class="card"><b>Rien à faire pour l\'instant.</b></div>'}
+      <h2>Noter un soin</h2>
+      <form class="stack card" data-form="health">
+        <div class="field"><label for="hhen">Pour qui ?</label>
+          <select id="hhen" name="henId"><option value="">Tout le poulailler</option>
+          ${hens.map((x) => `<option value="${x.id}" ${x.id === preHen ? 'selected' : ''}>${h(x.name)}</option>`).join('')}</select></div>
+        <div class="field"><span class="lab">Quoi ?</span>
+          <div class="seg wrap">${Object.entries(HEALTH).map(([k, v]) => `<button type="button" data-act="healthKind" data-v="${k}" aria-pressed="${healthKind === k}">${v.label}</button>`).join('')}</div></div>
+        <div class="field"><label for="hday">Quand ?</label><input id="hday" name="day" type="date" value="${today}" max="${today}"></div>
+        <div class="field"><span class="lab">Prochain rappel</span>
+          <div class="seg wrap">${NEXT_CHOICES.map(([d, l]) => `<button type="button" data-act="healthNext" data-v="${d}" aria-pressed="${healthNext === d}">${l}</button>`).join('')}</div></div>
+        <div class="field"><label for="hnote">Note (produit, dose…)</label><input id="hnote" name="note" maxlength="500"></div>
+        <button class="btn primary big" type="submit">Enregistrer</button>
+      </form>
+      <h2>Historique</h2>
+      <div class="card list">${hs.history.filter((x) => !preHen || x.henId === preHen || x.henId === null).map((x) => `
+        <div class="stack" style="gap:.2rem"><div class="row between"><b>${h(HEALTH[x.kind]?.label || x.kind)} · ${h(x.hen || 'tout le poulailler')}</b>
+          <button class="btn" type="button" data-act="healthRemove" data-id="${x.id}" style="min-height:2.8rem;padding:.2rem .8rem" aria-label="Supprimer">Suppr.</button></div>
+          <span class="muted">${h(fmtLongDay(x.day))}${x.who ? ` · ${h(x.who)}` : ''}${x.nextDue ? ` · prochain le ${h(fmtLongDay(x.nextDue))}` : ''}</span>
+          ${x.note ? `<span>${h(x.note)}</span>` : ''}</div>`).join('') || '<p class="muted" style="margin:0">Rien de noté pour l\'instant.</p>'}</div>`;
+  }
+
+  // ---------- aide à la race
+  let quiz = { step: 0, answers: {}, henId: null };
+
+  function viewBreed(r) {
+    const henId = r.id ? Number(r.id) : null;
+    if (quiz.henId !== henId) quiz = { step: 0, answers: {}, henId };
+    const hen = henId ? (S.hens || []).find((x) => x.id === henId) : null;
+    const backLink = hen ? back(`#/poule/${hen.id}`, hen.name) : back('#/poules', 'Mes poules');
+    const Q = window.KOTKOT_BREEDS.questions;
+    if (quiz.step < Q.length) {
+      const q = Q[quiz.step];
+      return `
+        ${backLink}
+        <h1>Quelle race ?</h1>
+        <p class="muted" style="margin:0">Question ${quiz.step + 1} sur ${Q.length}${hen ? ` · ${h(hen.name)}` : ''}</p>
+        <h2 style="font-size:1.45rem">${h(q.text)}</h2>
+        <div class="stack">${q.options.map(([v, label, hint]) => `<button class="btn big quiz-opt" type="button" data-act="quizAnswer" data-v="${v}">
+          ${q.swatches ? `<span class="swatch" style="background:${q.swatches[v]}" aria-hidden="true"></span>` : ''}
+          <span style="text-align:left;flex:1">${h(label)}${hint ? `<span class="muted" style="display:block;font-size:.95rem;font-weight:400">${h(hint)}</span>` : ''}</span></button>`).join('')}
+          <button class="btn ghost" type="button" data-act="quizAnswer" data-v="">Je ne sais pas</button>
+          ${quiz.step ? '<button class="btn" type="button" data-act="quizBack">← Question précédente</button>' : ''}
+        </div>`;
+    }
+    const results = window.KOTKOT_BREEDS.match(quiz.answers).slice(0, 3);
+    return `
+      ${backLink}
+      <h1>Elle ressemble à…</h1>
+      <p class="muted" style="margin:0">Les poules de jardin sont souvent des croisements : c'est une piste, pas une certitude.</p>
+      <div class="stack">${results.map((b, i) => `
+        <div class="card stack">
+          <div class="row between"><b style="font-size:1.3rem">${i + 1}. ${h(b.name)}</b><span class="pill ${b.level === 'Peu probable' ? 'watch' : ''}">${h(b.level)}</span></div>
+          <span>${h(b.desc)}</span>
+          ${hen ? `<button class="btn primary" type="button" data-act="quizPick" data-name="${h(b.name)}">C'est elle !</button>` : ''}
+        </div>`).join('')}</div>
+      <button class="btn" type="button" data-act="quizRestart">Recommencer</button>`;
+  }
+
+  // ---------- rappels push sur ce téléphone
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const isIos = () => /iPad|iPhone|iPod/.test(navigator.userAgent);
+  const b64uToBytes = (s) => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4)); return Uint8Array.from(b, (c) => c.charCodeAt(0)); };
+
+  async function currentPushSub() {
+    if (!pushSupported()) return null;
+    const reg = await navigator.serviceWorker.ready;
+    return reg.pushManager.getSubscription();
+  }
+
+  async function refreshPushStatus() {
+    const box = app.querySelector('[data-push-status]');
+    if (!box) return;
+    let html;
+    if (!S.household?.premium) {
+      html = `<p style="margin:0">Les rappels font partie de Premium.</p><a class="btn primary" href="#/premium">Découvrir Premium</a>`;
+    } else if (!pushSupported()) {
+      html = isIos()
+        ? '<p style="margin:0">Sur iPhone : ajoutez d\'abord KotKot à l\'écran d\'accueil (bouton Partager › « Sur l\'écran d\'accueil »), puis ouvrez-le depuis l\'icône.</p>'
+        : '<p style="margin:0">Ce navigateur ne sait pas recevoir de rappels. Essayez avec Chrome, Firefox ou Safari à jour.</p>';
+    } else if (Notification.permission === 'denied') {
+      html = '<p style="margin:0">Les notifications sont bloquées pour KotKot. Autorisez-les dans les réglages du téléphone (Notifications), puis revenez ici.</p>';
+    } else {
+      const sub = await currentPushSub().catch(() => null);
+      html = sub
+        ? `<p class="hint" style="margin:0">${I.check}<span><b>Activés sur ce téléphone.</b></span></p>
+           <div class="grid2"><button class="btn" type="button" data-act="pushTest">Essayer</button><button class="btn" type="button" data-act="pushOff">Désactiver</button></div>`
+        : `<button class="btn primary" type="button" data-act="pushOn">${I.bell} Activer les rappels</button>`;
+    }
+    if (box.isConnected) box.innerHTML = html;
+  }
+
+  async function pushOn() {
+    if (await Notification.requestPermission() !== 'granted') return showError('Sans votre accord, le téléphone ne peut pas afficher les rappels.');
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(S.push.publicKey) });
+      const j = sub.toJSON();
+      await call('push_subscribe', { endpoint: j.endpoint, keys: j.keys });
+      toast('Rappels activés');
+    } catch (e) {
+      if (!errorText) showError('Les rappels n\'ont pas pu être activés sur ce téléphone.');
+    }
+    render();
+  }
+
+  async function pushOff() {
+    const sub = await currentPushSub();
+    if (sub) {
+      await call('push_unsubscribe', { endpoint: sub.endpoint }).catch(() => {});
+      await sub.unsubscribe();
+    }
+    toast('Rappels désactivés');
+    render();
+  }
+
+  function applySize() { document.documentElement.dataset.size = String(store.get('kk-size', 1)); }
   // ------------------------------------------------------------------ clics
   const actions = {
     toastUndo() { const u = toastUndo; hideToast(); if (u) { u(); render(); } },
@@ -746,14 +1176,68 @@
     },
     size(el) { store.set('kk-size', Number(el.dataset.v)); applySize(); render(); },
     async delay(el) { await call('settings_save', { reminderDelay: Number(el.dataset.v) }); toast('Rappel enregistré'); render(); },
-    async notify() { if ('Notification' in window) { await Notification.requestPermission(); render(); checkDoorReminder(); } },
     async personRemove(el) {
       const id = Number(el.dataset.id);
       await call('person_remove', { id });
       toast('Personne retirée', () => call('person_remove', { id, restore: true }).then(render));
       render();
     },
-    async logout() { hideToast(); try { await post('logout', {}); } catch { /* tant pis */ } setState({ ...S, auth: false }); go('#/'); },
+    async logout() {
+      hideToast();
+      try { await post('logout', {}); } catch { /* tant pis */ }
+      setState({ ...S, auth: false });
+      go('#/');
+    },
+    async accountLogout() { await call('account_logout', {}); toast('Déconnecté du compte'); go(S.auth ? '#/reglages' : '#/'); },
+    async enterHousehold(el) { await call('household_enter', { householdId: Number(el.dataset.id) }); notesFor = null; go('#/'); },
+    async shareInvite() {
+      const text = `Rejoins notre poulailler « ${S.household.name} » sur KotKot ! Code d'invitation : ${fmtCode(S.household.inviteCode)}`;
+      if (navigator.share) {
+        try { await navigator.share({ title: 'KotKot', text, url: inviteUrl() }); } catch { /* annulé */ }
+        return;
+      }
+      try { await navigator.clipboard.writeText(`${text}\n${inviteUrl()}`); toast('Invitation copiée : collez-la dans un SMS ou un e-mail'); } catch { toast(fmtCode(S.household.inviteCode)); }
+    },
+    async regenInvite() {
+      if (!confirm('Créer un nouveau code ? L\'ancien ne marchera plus pour les nouveaux téléphones.')) return;
+      await call('invite_regenerate', {}); toast('Nouveau code créé'); render();
+    },
+    healthKind(el) {
+      healthKind = el.dataset.v;
+      healthNext = HEALTH[healthKind].next;
+      keepForm(() => render());
+    },
+    healthNext(el) { healthNext = Number(el.dataset.v); keepForm(() => render()); },
+    async healthDone(el) {
+      const every = Number(el.dataset.every) || 0;
+      await call('health_add', { kind: el.dataset.kind, henId: el.dataset.hen ? Number(el.dataset.hen) : null, day: S.today, nextDue: every > 0 ? addDays(S.today, every) : null });
+      toast('Noté, merci !'); render();
+    },
+    async healthRemove(el) {
+      if (!confirm('Supprimer cette ligne du carnet ?')) return;
+      await call('health_remove', { id: Number(el.dataset.id) }); render();
+    },
+    quizAnswer(el) {
+      const q = window.KOTKOT_BREEDS.questions[quiz.step];
+      if (el.dataset.v) quiz.answers[q.id] = el.dataset.v; else delete quiz.answers[q.id];
+      quiz.step++; render(); window.scrollTo(0, 0);
+    },
+    quizBack() { quiz.step = Math.max(0, quiz.step - 1); render(); },
+    quizRestart() { quiz = { step: 0, answers: {}, henId: quiz.henId }; render(); },
+    async quizPick(el) {
+      const hen = S.hens.find((x) => x.id === quiz.henId);
+      if (!hen) return;
+      await call('hen_save', { id: hen.id, name: hen.name, breed: el.dataset.name, arrived: hen.arrived, mark: hen.mark, eggColor: hen.eggColor });
+      toast(`${hen.name} : ${el.dataset.name}`);
+      quiz = { step: 0, answers: {}, henId: null };
+      go(`#/poule/${hen.id}`);
+    },
+    pushOn: () => pushOn(),
+    pushOff: () => pushOff(),
+    async pushTest() {
+      const sub = await currentPushSub();
+      if (sub) { await call('push_test', { endpoint: sub.endpoint }); toast('Rappel d\'essai envoyé'); }
+    },
     locate(el) {
       if (!navigator.geolocation) return showError('Ce téléphone ne donne pas sa position. Tapez la latitude et la longitude.');
       el.disabled = true; el.textContent = 'Recherche…';
@@ -783,16 +1267,68 @@
 
   // ------------------------------------------------------------------ formulaires
   const forms = {
-    async setup(f, fd) {
-      const pin = fd.get('pin');
-      if (!/^\d{4}$/.test(pin)) return showError('Le code doit faire exactement 4 chiffres.');
-      if (pin !== fd.get('pin2')) return showError('Les deux codes ne sont pas pareils.');
-      const people = fd.getAll('person').map((s) => s.trim()).filter(Boolean);
-      if (!people.length) return showError('Indiquez au moins un prénom.');
+    async signup(f, fd) {
+      let body;
+      try { body = signupPayload(fd); } catch (e) { return showError(e.message); }
       try {
-        const data = await post('setup', { pin, people, city: fd.get('city'), lat: fd.get('lat'), lon: fd.get('lon') });
+        const data = await post('account_create', { email: fd.get('email'), password: fd.get('password'), ...body });
+        errorText = ''; setState(data.state); go('#/'); toast('Bienvenue dans KotKot !');
+      } catch (e) { showError(e.status === 0 ? 'Pas de connexion internet.' : e.message); }
+    },
+    async householdCreate(f, fd) {
+      let body;
+      try { body = signupPayload(fd); } catch (e) { return showError(e.message); }
+      await call('household_create', body);
+      errorText = ''; notesFor = null; go('#/'); toast('Nouveau poulailler créé');
+    },
+    async accountLogin(f, fd) {
+      try {
+        const data = await post('account_login', { email: fd.get('email'), password: fd.get('password') });
         errorText = ''; setState(data.state); go('#/');
-      } catch (e) { showError(e.message); }
+      } catch (e) { showError(e.status === 0 ? 'Pas de connexion internet.' : e.message); }
+    },
+    async forgot(f, fd) {
+      try {
+        const data = await post('password_forgot', { email: fd.get('email') });
+        forgotMessage = data.message; errorText = ''; render();
+      } catch (e) { showError(e.status === 0 ? 'Pas de connexion internet.' : e.message); }
+    },
+    async reset(f, fd) {
+      try {
+        const data = await post('password_reset', { token: f.dataset.token, password: fd.get('password') });
+        errorText = ''; setState(data.state); toast('Nouveau mot de passe enregistré'); go('#/');
+      } catch (e) { showError(e.status === 0 ? 'Pas de connexion internet.' : e.message); }
+    },
+    async joinCode(f, fd) {
+      const code = String(fd.get('code') || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      if (code.length !== 8) return showError('Le code d\'invitation a 8 lettres et chiffres.');
+      errorText = ''; joinInfo = null; go(`#/rejoindre/${code}`);
+    },
+    async claim(f, fd) {
+      await call('household_claim', { email: fd.get('email'), password: fd.get('password'), pin: fd.get('pin') });
+      errorText = ''; toast('Vous êtes maintenant responsable du poulailler'); go('#/compte');
+    },
+    async pinReset(f, fd) {
+      await call('pin_reset', { newPin: fd.get('newPin') });
+      errorText = ''; f.reset(); toast('Nouveau code enregistré. Prévenez la famille !');
+    },
+    async passwordChange(f, fd) {
+      await call('password_change', { oldPassword: fd.get('oldPassword'), newPassword: fd.get('newPassword') });
+      errorText = ''; f.reset(); toast('Mot de passe changé');
+    },
+    async householdDelete(f, fd) {
+      const id = Number(f.dataset.id);
+      await call('household_delete', { householdId: id, password: fd.get('password') });
+      errorText = ''; toast('Poulailler supprimé'); go('#/');
+    },
+    async accountDelete(f, fd) {
+      await call('account_delete', { password: fd.get('password') });
+      errorText = ''; store.set('kk-join', null); toast('Compte supprimé'); go('#/');
+    },
+    async health(f, fd) {
+      const day = fd.get('day') || S.today;
+      await call('health_add', { kind: healthKind, henId: fd.get('henId') ? Number(fd.get('henId')) : null, day, nextDue: healthNext ? addDays(day, healthNext) : null, note: fd.get('note') });
+      errorText = ''; toast('Soin noté'); render(); window.scrollTo(0, 0);
     },
     async task(f, fd) {
       await call('task_save', { label: fd.get('label'), frequency: newTaskFreq, weekday: Number(fd.get('weekday') || 6) });
@@ -810,6 +1346,7 @@
       notes = data.notes; render();
     },
     async location(f, fd) {
+      if (fd.get('householdName') && fd.get('householdName') !== S.household.name) await call('household_rename', { name: fd.get('householdName') });
       await call('settings_save', { city: fd.get('city'), lat: fd.get('lat'), lon: fd.get('lon') });
       errorText = ''; toast('Enregistré'); render();
     },

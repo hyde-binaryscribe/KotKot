@@ -43,18 +43,16 @@ const DEFAULT_TASKS = [
     ['Nettoyer le pondoir', 'weekly', 6],
 ];
 
-function action_setup(array $in): array
+/** Fills a brand-new household: people, family code, place, default tasks. Returns the first person. */
+function setup_household(array $in): int
 {
-    if (setting('pin_hash') !== null) {
-        throw new ApiError('KotKot est déjà installé.', 409);
-    }
     $pin = $in['pin'] ?? null;
     if (!valid_pin($pin)) {
-        throw new ApiError('Le code doit faire 4 chiffres.');
+        throw new ApiError('Le code de la famille doit faire 4 chiffres.');
     }
     $names = array_values(array_filter(array_map(fn ($n) => clean_text($n, 40), (array) ($in['people'] ?? []))));
     if (!$names) {
-        throw new ApiError('Ajoutez au moins une personne.');
+        throw new ApiError('Ajoutez au moins un prénom.');
     }
     $pdo = db();
     $pdo->beginTransaction();
@@ -63,7 +61,7 @@ function action_setup(array $in): array
     $first = null;
     foreach ($names as $i => $name) {
         $pdo->prepare('INSERT INTO people (name, color, created_at) VALUES (?, ?, ?)')
-            ->execute([$name, KK_COLORS[$i % count(KK_COLORS)], time()]);
+            ->execute([$name, KK_COLORS[$i % count(KK_COLORS)], now_ts()]);
         $first ??= (int) $pdo->lastInsertId();
     }
     foreach (DEFAULT_TASKS as $i => [$label, $freq, $wd]) {
@@ -71,8 +69,7 @@ function action_setup(array $in): array
             ->execute([$label, $freq, $wd, $i]);
     }
     $pdo->commit();
-    create_device($first);
-    return [];
+    return $first;
 }
 
 function save_location(array $in): void
@@ -86,23 +83,6 @@ function save_location(array $in): void
         set_setting('lat', (string) round((float) $lat, 4));
         set_setting('lon', (string) round((float) $lon, 4));
     }
-}
-
-function action_login(array $in): array
-{
-    if (($wait = check_pin_lock()) !== null) {
-        throw new ApiError('Trop d\'essais. Réessayez dans ' . max(1, (int) ceil($wait / 60)) . ' min.', 429);
-    }
-    $hash = setting('pin_hash');
-    $pin = $in['pin'] ?? null;
-    if ($hash === null || !valid_pin($pin) || !password_verify($pin, $hash)) {
-        register_pin_failure();
-        throw new ApiError('Ce n\'est pas le bon code.', 403);
-    }
-    clear_pin_failures();
-    $personId = person_or_null($in['personId'] ?? null);
-    create_device($personId);
-    return [];
 }
 
 function person_or_null(mixed $id): ?int
@@ -130,13 +110,7 @@ function action_switch_person(array $in): array
 
 function action_logout(): array
 {
-    $d = current_device();
-    if ($d) {
-        db()->prepare('DELETE FROM devices WHERE token_hash = ?')->execute([$d['hash']]);
-    }
-    set_device_cookie('', 0);
-    unset($_COOKIE[KK_COOKIE]);
-    current_device(true);
+    forget_device();
     return [];
 }
 
@@ -261,7 +235,7 @@ function action_hen_save(array $in): array
             ->execute([...$fields, $id]);
     } else {
         db()->prepare('INSERT INTO hens (name, breed, arrived, mark, egg_color, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-            ->execute([...$fields, time()]);
+            ->execute([...$fields, now_ts()]);
         $id = (int) db()->lastInsertId();
     }
     return ['id' => $id];
@@ -302,7 +276,7 @@ function action_hen_note_add(array $in): array
         throw new ApiError('La note est vide.');
     }
     db()->prepare('INSERT INTO hen_notes (hen_id, person_id, text, created_at) VALUES (?, ?, ?, ?)')
-        ->execute([(int) ($in['id'] ?? 0), me_id(), $text, time()]);
+        ->execute([(int) ($in['id'] ?? 0), me_id(), $text, now_ts()]);
     return action_hen_notes($in);
 }
 
@@ -313,9 +287,14 @@ function action_hen_note_remove(array $in): array
     return action_hen_notes($in);
 }
 
+function photo_dir(): string
+{
+    return household_dir(household_id()) . '/photos';
+}
+
 function photo_path(int $photoId): string
 {
-    return KK_DATA . '/photos/' . $photoId . '.jpg';
+    return photo_dir() . '/' . $photoId . '.jpg';
 }
 
 /** Album of a hen, oldest first, so growth reads left to right. */
@@ -339,6 +318,13 @@ function action_hen_photo(): array
     if (!$st->fetchColumn()) {
         throw new ApiError('Poule introuvable.', 404);
     }
+    if (!is_premium()) {
+        $count = db()->prepare('SELECT COUNT(*) FROM hen_photos WHERE hen_id = ?');
+        $count->execute([$id]);
+        if ((int) $count->fetchColumn() >= FREE_PHOTOS_PER_HEN) {
+            throw new ApiError('La version gratuite garde ' . FREE_PHOTOS_PER_HEN . ' photos par poule. Passez à Premium pour un album illimité.', 402);
+        }
+    }
     $file = $_FILES['photo'] ?? null;
     if (!$file || ($file['error'] ?? 1) !== UPLOAD_ERR_OK || $file['size'] > 15 * 1024 * 1024) {
         throw new ApiError('La photo n\'a pas pu être envoyée.');
@@ -352,16 +338,16 @@ function action_hen_photo(): array
     $img = orient_image($img, (int) ($exif['Orientation'] ?? 1));
 
     // Date of the photo: the date chosen in the app, else the camera's date, else now.
-    $takenAt = time();
+    $takenAt = now_ts();
     $chosen = $_POST['date'] ?? '';
     if (is_string($chosen) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $chosen)) {
         $d = DateTimeImmutable::createFromFormat('!Y-m-d H:i', $chosen . ' 12:00', tz());
-        if ($d && $d->getTimestamp() <= time() + 86400) {
+        if ($d && $d->getTimestamp() <= now_ts() + 86400) {
             $takenAt = $d->getTimestamp();
         }
     } elseif (!empty($exif['DateTimeOriginal'])) {
         $d = DateTimeImmutable::createFromFormat('Y:m:d H:i:s', (string) $exif['DateTimeOriginal'], tz());
-        if ($d && $d->getTimestamp() <= time() + 86400) {
+        if ($d && $d->getTimestamp() <= now_ts() + 86400) {
             $takenAt = $d->getTimestamp();
         }
     }
@@ -372,11 +358,11 @@ function action_hen_photo(): array
     $side = min($w, $h);
     $out = imagecreatetruecolor(800, 800);
     imagecopyresampled($out, $img, 0, 0, intdiv($w - $side, 2), intdiv($h - $side, 2), 800, 800, $side, $side);
-    if (!is_dir(KK_DATA . '/photos')) {
-        mkdir(KK_DATA . '/photos', 0775, true);
+    if (!is_dir(photo_dir())) {
+        mkdir(photo_dir(), 0775, true);
     }
     db()->prepare('INSERT INTO hen_photos (hen_id, taken_at, person_id, created_at) VALUES (?, ?, ?, ?)')
-        ->execute([$id, $takenAt, me_id(), time()]);
+        ->execute([$id, $takenAt, me_id(), now_ts()]);
     $photoId = (int) db()->lastInsertId();
     if (!imagejpeg($out, photo_path($photoId), 82)) {
         db()->prepare('DELETE FROM hen_photos WHERE id = ?')->execute([$photoId]);
@@ -461,7 +447,7 @@ function action_person_save(array $in): array
     } else {
         $n = (int) db()->query('SELECT COUNT(*) FROM people')->fetchColumn();
         db()->prepare('INSERT INTO people (name, color, created_at) VALUES (?, ?, ?)')
-            ->execute([$name, clean_color($in['color'] ?? null, $n), time()]);
+            ->execute([$name, clean_color($in['color'] ?? null, $n), now_ts()]);
     }
     return [];
 }
@@ -474,5 +460,51 @@ function action_person_remove(array $in): array
         throw new ApiError('Il faut garder au moins une personne.');
     }
     db()->prepare('UPDATE people SET active = ? WHERE id = ?')->execute([$restore ? 1 : 0, (int) ($in['id'] ?? 0)]);
+    return [];
+}
+
+// ================================================================ carnet santé
+
+const HEALTH_KINDS = ['vermifuge', 'parasites', 'vaccin', 'soin', 'veto', 'autre'];
+
+function valid_day(mixed $v): ?string
+{
+    if (!is_string($v) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $v)) {
+        return null;
+    }
+    $d = DateTimeImmutable::createFromFormat('!Y-m-d', $v);
+    return $d && $d->format('Y-m-d') === $v ? $v : null;
+}
+
+function action_health_add(array $in): array
+{
+    require_auth();
+    $kind = $in['kind'] ?? '';
+    if (!in_array($kind, HEALTH_KINDS, true)) {
+        throw new ApiError('Type de soin inconnu.');
+    }
+    $henId = null;
+    if (!empty($in['henId'])) {
+        $st = db()->prepare('SELECT id FROM hens WHERE id = ?');
+        $st->execute([(int) $in['henId']]);
+        $henId = $st->fetchColumn() ?: null;
+        if ($henId === null) {
+            throw new ApiError('Poule introuvable.', 404);
+        }
+    }
+    $day = valid_day($in['day'] ?? null) ?? now()->format('Y-m-d');
+    $next = valid_day($in['nextDue'] ?? null);
+    if ($next !== null && $next <= $day) {
+        throw new ApiError('Le prochain rappel doit être après la date du soin.');
+    }
+    db()->prepare('INSERT INTO health (hen_id, kind, day, next_due, note, person_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$henId, $kind, $day, $next, clean_text($in['note'] ?? '', 500), me_id(), now_ts()]);
+    return [];
+}
+
+function action_health_remove(array $in): array
+{
+    require_auth();
+    db()->prepare('DELETE FROM health WHERE id = ?')->execute([(int) ($in['id'] ?? 0)]);
     return [];
 }

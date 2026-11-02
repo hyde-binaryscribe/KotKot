@@ -220,6 +220,24 @@ h2 { margin: .5rem 0 0; font-size: 1.15rem; }
 .photo-fig figcaption { font-size: .9rem; font-weight: 700; }
 .album .photo-fig .btn { margin-top: auto; }
 
+/* ---------- V2 ---------- */
+.invite { font-size: 2.2rem; font-weight: 700; letter-spacing: .12em; text-align: center; padding: .6rem; border: 3px dashed var(--ink); border-radius: 1rem; background: #fff; font-variant-numeric: tabular-nums; }
+.alert-card { border-color: var(--rust); background: #FBE3D6; }
+.seg.wrap { grid-auto-flow: row; grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr)); }
+.quiz-opt { justify-content: flex-start; text-align: left; gap: 1rem; }
+.swatch { width: 2.6rem; height: 2.6rem; border-radius: 50%; border: 2px solid var(--ink); flex-shrink: 0; }
+details summary { list-style: none; }
+details summary::-webkit-details-marker { display: none; }
+.tile[type="button"] { width: 100%; text-align: left; font: inherit; }
+
+/* bigger screens: the home tiles side by side, wider pages */
+@media (min-width: 60rem) {
+  #app { max-width: 56rem; }
+  .home-tiles { flex-direction: row; }
+  .home-tiles .tile { flex-direction: column; justify-content: center; text-align: center; min-height: 16rem; }
+  .album { grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); }
+}
+
 /* ---------- forms ---------- */
 .field { display: flex; flex-direction: column; gap: .35rem; }
 .field label, .field .lab { font-weight: 700; }

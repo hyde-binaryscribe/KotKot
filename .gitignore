@@ -2,3 +2,4 @@
 !/data/.htaccess
 !/data/README.md
 .DS_Store
+/config.php

@@ -2,8 +2,11 @@
 declare(strict_types=1);
 
 require __DIR__ . '/../src/bootstrap.php';
+require __DIR__ . '/../src/auth.php';
 require __DIR__ . '/../src/state.php';
 require __DIR__ . '/../src/actions.php';
+require __DIR__ . '/../src/accounts.php';
+require __DIR__ . '/../src/push.php';
 
 header('Cache-Control: no-store');
 header('X-Content-Type-Options: nosniff');
@@ -29,9 +32,37 @@ if ($action === 'photo') {
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Export: a file download for the account holder.
+if ($action === 'export') {
+    try {
+        export_household((int) ($_GET['id'] ?? 0));
+    } catch (ApiError $e) {
+        http_response_code($e->status);
+        header('Content-Type: text/plain; charset=utf-8');
+        echo $e->getMessage();
+    }
+    exit;
+}
+
 $routes = [
-    'setup' => 'action_setup',
-    'login' => 'action_login',
+    // comptes et foyers
+    'account_create' => 'action_account_create',
+    'account_login' => 'action_account_login',
+    'account_logout' => 'action_account_logout',
+    'account_delete' => 'action_account_delete',
+    'household_create' => 'action_household_create',
+    'household_enter' => 'action_household_enter',
+    'household_rename' => 'action_household_rename',
+    'household_claim' => 'action_household_claim',
+    'household_delete' => 'action_household_delete',
+    'join_lookup' => 'action_join_lookup',
+    'join_login' => 'action_join_login',
+    'invite_regenerate' => 'action_invite_regenerate',
+    'password_forgot' => 'action_password_forgot',
+    'password_reset' => 'action_password_reset',
+    'password_change' => 'action_password_change',
+    'pin_reset' => 'action_pin_reset',
+    // la vie du poulailler
     'logout' => 'action_logout',
     'switch_person' => 'action_switch_person',
     'egg' => 'action_egg',
@@ -54,6 +85,11 @@ $routes = [
     'pin_change' => 'action_pin_change',
     'person_save' => 'action_person_save',
     'person_remove' => 'action_person_remove',
+    'health_add' => 'action_health_add',
+    'health_remove' => 'action_health_remove',
+    'push_subscribe' => 'action_push_subscribe',
+    'push_unsubscribe' => 'action_push_unsubscribe',
+    'push_test' => 'action_push_test',
 ];
 
 try {

@@ -105,10 +105,44 @@ Dans **Apache et nginx**, laissez le **mode proxy** coché (réglage par défaut
 
 ---
 
+## 6 bis. Configuration et rappels (V2)
+
+### Le fichier `config.php`
+
+Dans le **Gestionnaire de fichiers**, dossier de KotKot : copiez `config.example.php` en **`config.php`** et modifiez au moins :
+
+```php
+'base_url'  => 'https://poules.exemple.fr/',   // pour les liens envoyés par e-mail
+'mail_from' => 'kotkot@exemple.fr',            // une adresse de VOTRE domaine
+```
+
+- `registration` : `true` pour que d'autres familles puissent créer leur poulailler, `false` pour garder le site pour vous.
+- `billing` : laissez `false` tant que le paiement en ligne n'est pas branché (tout est inclus).
+
+`config.php` n'est jamais envoyé sur GitHub et les mises à jour n'y touchent pas.
+
+> **E-mails** (mot de passe oublié) : KotKot utilise l'envoi de mail de PHP. Sur Plesk, il fonctionne si le service de messagerie est actif pour le domaine (**Messagerie** › **Paramètres de messagerie** activés). Pour éviter les indésirables, vérifiez que le domaine a bien ses enregistrements **SPF** et **DKIM** (Plesk › **Paramètres de messagerie** › DKIM).
+
+### La tâche planifiée des rappels
+
+C'est elle qui envoie les rappels sur les téléphones (porte restée ouverte, soins à faire), même quand l'appli est fermée.
+
+1. **Sites Web et domaines** › **Tâches planifiées** (ou **Outils et paramètres** › **Tâches planifiées**) › **Ajouter une tâche**.
+2. Type de tâche : **Exécuter un script PHP**.
+3. Chemin du script : `poules.exemple.fr/tools/cron.php` (le dossier de KotKot, puis `tools/cron.php`).
+4. Version de PHP : la même qu'à l'étape 5.
+5. Exécuter : **Cron style**, et tapez `*/5 * * * *` (toutes les 5 minutes).
+6. Notifier : **Ne pas notifier** (ou « en cas d'erreur »).
+7. **OK**, puis **Exécuter maintenant** une fois : aucun message = tout va bien.
+
+---
+
 ## 7. Premier lancement
 
 1. Sur votre téléphone, ouvrez **`https://poules.exemple.fr`**.
-2. L'écran **Bienvenue** s'affiche :
+2. L'écran **Bienvenue** s'affiche : touchez **Créer mon poulailler**, puis indiquez :
+   - votre **e-mail** et un **mot de passe** (c'est le compte du responsable : pour retrouver le poulailler, exporter, gérer l'abonnement) ;
+   - le **nom** du poulailler ;
    - les **prénoms** de ceux qui s'occupent des poules (4 au départ, d'autres plus tard dans Réglages) ;
    - le **code de la famille** à 4 chiffres, tapé deux fois ;
    - **Utiliser ma position** (ou tapez la ville et les coordonnées) pour les heures du soleil.
@@ -126,7 +160,9 @@ Dans **Apache et nginx**, laissez le **mode proxy** coché (réglage par défaut
 **iPhone (Safari)** : ouvrez l'adresse › bouton **Partager** › **Sur l'écran d'accueil**.
 > Sur iPhone, les rappels ne fonctionnent que si KotKot a été ajouté à l'écran d'accueil et ouvert depuis l'icône (iOS 16.4 ou plus récent).
 
-Puis, sur chaque téléphone : touchez son prénom, tapez le code. Le téléphone reste connecté (plus d'un an), inutile de retaper le code chaque jour.
+Pour inviter la famille : **Réglages** › **Inviter la famille** › **Envoyer l'invitation** (SMS, WhatsApp, e-mail…). Sur le téléphone du proche : ouvrir le lien (ou « Rejoindre ma famille » et taper le code à 8 caractères), toucher son prénom, taper le code de la famille. Le téléphone reste connecté (plus d'un an).
+
+> **Vous aviez déjà la V1 ?** Rien à refaire : à la mise à jour, vos données deviennent le poulailler n° 1 et les téléphones restent connectés. Dans **Réglages**, utilisez **Devenir responsable du poulailler** pour y attacher votre e-mail.
 
 ---
 
@@ -157,15 +193,18 @@ Pour récupérer à la main : **Gestionnaire de fichiers** › dossier du sous-d
 | Le site ne se met pas à jour | Webhook absent ou en erreur | Étape 3 bis, ou **Déployer maintenant** dans Plesk |
 | Git : « Permission denied (publickey) » | Clé de déploiement absente | Étape 3, point 4 |
 | Pas de bouton « Installer l'application » | Le site n'est pas en HTTPS | Étape 2 |
+| Les rappels n'arrivent pas | Tâche planifiée absente, ou rappels non activés sur le téléphone | Étape 6 bis ; puis Réglages › Rappels › **Essayer** |
+| L'e-mail « mot de passe oublié » n'arrive pas | Messagerie du domaine inactive, ou classé en indésirable | Étape 6 bis (E-mails) |
 | « Trop d'essais. Réessayez dans … » | 5 codes faux de suite | Attendez le temps indiqué |
 
 ### Code de la famille oublié
 
 Le code n'est stocké que sous forme chiffrée : personne ne peut le relire, mais on peut en choisir un nouveau.
 
+- **Le plus simple** : le responsable du poulailler, connecté avec son e-mail : **Réglages** › **Mon compte** › **Code de la famille oublié ?**
 - **Sans SSH** : **Tâches planifiées** › **Ajouter une tâche** › **Exécuter un script PHP**.
   - Chemin du script : `poules.exemple.fr/tools/reset-pin.php`
-  - Arguments : le nouveau code, par exemple `5678`
+  - Arguments : le nouveau code, par exemple `5678` (s'il y a plusieurs poulaillers : le code d'invitation du poulailler, un espace, puis le nouveau code)
   - Version de PHP : la même qu'à l'étape 5
   - **Exécuter maintenant**, puis supprimez la tâche.
 - **Avec SSH** : depuis le dossier de KotKot, `php tools/reset-pin.php 5678`.
@@ -185,4 +224,6 @@ Les téléphones déjà connectés le restent ; seuls les nouveaux devront taper
 - [ ] Écran Bienvenue rempli
 - [ ] Vérification de sécurité de `data/`
 - [ ] Appli installée sur les téléphones
+- [ ] `config.php` créé (adresse du site, expéditeur des e-mails)
+- [ ] Tâche planifiée `tools/cron.php` toutes les 5 minutes
 - [ ] Sauvegarde hebdomadaire programmée
