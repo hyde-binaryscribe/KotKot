@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const KK_VERSION = '2.2.0';
+const KK_VERSION = '2.3.0';
 define('KK_ROOT', dirname(__DIR__));
 define('KK_DATA', rtrim(getenv('KOTKOT_DATA') ?: KK_ROOT . '/data', '/'));
 
@@ -359,6 +359,19 @@ function migrate_household(PDO $pdo): void
         CREATE INDEX health_hen ON health(hen_id, kind, day);
         PRAGMA user_version = 2;
         SQL);
+        $version = 2;
+    }
+    if ($version < 3) {
+        // V2.3: every kind of poultry (quail, ducks...), eggs counted per kind,
+        // arrival and birth as real dates (the old free text « arrived » stays for display).
+        $pdo->exec(<<<SQL
+        ALTER TABLE hens ADD COLUMN species TEXT NOT NULL DEFAULT 'poule';
+        ALTER TABLE hens ADD COLUMN arrived_on TEXT;
+        ALTER TABLE hens ADD COLUMN born_on TEXT;
+        ALTER TABLE eggs ADD COLUMN species TEXT NOT NULL DEFAULT 'poule';
+        CREATE INDEX eggs_day_species ON eggs(day, species);
+        PRAGMA user_version = 3;
+        SQL);
     }
 }
 
@@ -453,6 +466,14 @@ function is_premium(?array $h = null): bool
 }
 
 const FREE_PHOTOS_PER_HEN = 3;
+
+/** Kinds of poultry. Keys are stored; labels are the app's. */
+const SPECIES = ['poule', 'caille', 'canard', 'oie', 'dinde', 'pintade', 'autre'];
+
+function species(mixed $v): string
+{
+    return is_string($v) && in_array($v, SPECIES, true) ? $v : 'poule';
+}
 
 // ================================================================ cookies
 

@@ -8,6 +8,12 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 - **Marche sans réseau** au fond du jardin : les clics sont gardés sur le téléphone et envoyés dès que ça capte.
 - S'installe comme une appli (PWA) : « Ajouter à l'écran d'accueil ».
 
+## Nouveautés V2.3
+
+- **Toutes les volailles** : poules, cailles, canards, oies, dindes, pintades ; les œufs sont comptés par espèce.
+- **Date de naissance et d'arrivée** (facultatives) : l'âge est calculé, et affiché sur chaque photo de l'album.
+- Les photos sont **réduites sur le téléphone** avant l'envoi (rapide en 4G, aucune limite serveur à régler).
+
 ## Nouveautés V2.2
 
 - **Chacun son compte** (e-mail, **Google** ou **Apple**) : on retrouve son poulailler sur n'importe quel appareil, sans code.

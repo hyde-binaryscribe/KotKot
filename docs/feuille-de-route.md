@@ -18,6 +18,12 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 - [x] **Synchro en direct** : ce que fait un téléphone apparaît sur les autres en quelques secondes
 - [x] **Calendrier des œufs** : un jour oublié ? on touche le jour et on indique le nombre (jusqu'à 2 ans en arrière)
 
+## V2.3 — fait
+- [x] **Toutes les volailles** : poules, cailles, canards, oies, dindes, pintades… et œufs comptés par espèce
+- [x] **Dates de naissance et d'arrivée** (facultatives), âge calculé, âge sur chaque photo
+- [x] Photos réduites sur le téléphone avant l'envoi (plus de « La photo n'a pas pu être envoyée »)
+- [x] Champ date bien affiché sur iPhone
+
 ## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité

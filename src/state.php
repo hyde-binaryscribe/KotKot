@@ -134,8 +134,15 @@ function eggs_state(DateTimeImmutable $now): array
         $d = $now->modify("-$i days")->format('Y-m-d');
         $last14[] = ['day' => $d, 'count' => $byDay[$d] ?? 0];
     }
+    $st = db()->prepare('SELECT species, SUM(delta) AS n FROM eggs WHERE day = ? GROUP BY species');
+    $st->execute([$today]);
+    $todayBySpecies = [];
+    foreach ($st->fetchAll() as $r) {
+        $todayBySpecies[$r['species']] = max(0, (int) $r['n']);
+    }
     return [
         'today' => $byDay[$today] ?? 0,
+        'todayBySpecies' => $todayBySpecies,
         'last7' => $sum(7),
         'last30' => $sum(30),
         'days' => $last14,
@@ -216,13 +223,16 @@ function tasks_state(DateTimeImmutable $now): array
 
 function hens_list(): array
 {
-    $rows = db()->query("SELECT id, name, breed, arrived, mark, egg_color, status, photo
+    $rows = db()->query("SELECT id, name, species, breed, arrived, arrived_on, born_on, mark, egg_color, status, photo
         FROM hens WHERE active = 1 ORDER BY name COLLATE NOCASE")->fetchAll();
     return array_map(fn ($r) => [
         'id' => (int) $r['id'],
         'name' => $r['name'],
+        'species' => $r['species'],
         'breed' => $r['breed'],
         'arrived' => $r['arrived'],
+        'arrivedOn' => $r['arrived_on'],
+        'bornOn' => $r['born_on'],
         'mark' => $r['mark'],
         'eggColor' => $r['egg_color'],
         'status' => $r['status'],

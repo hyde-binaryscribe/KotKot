@@ -261,6 +261,13 @@ details summary::-webkit-details-marker { display: none; }
 .cal-day.today { outline: 3px solid var(--night); outline-offset: 1px; }
 .cal-day.future { opacity: .35; border-style: dashed; }
 
+/* compteurs d'œufs par espèce */
+.egg-kind { display: flex; flex-direction: column; gap: .6rem; }
+.egg-kind b { font-size: 1.2rem; }
+.egg-kind-n { font-size: 2.2rem; font-weight: 700; line-height: 1; }
+.egg-kind-btns { display: grid; grid-template-columns: 1fr 2fr; gap: .6rem; }
+.num-input { min-height: 3.2rem; padding: .5rem .8rem; border-radius: .9rem; border: 2px solid var(--ink-soft); font-size: 1.1rem; min-width: 0; }
+
 /* ---------- forms ---------- */
 .field { display: flex; flex-direction: column; gap: .35rem; }
 .field label, .field .lab { font-weight: 700; }
@@ -269,6 +276,14 @@ details summary::-webkit-details-marker { display: none; }
   border: 2px solid var(--ink-soft); background: #fff; font-size: 1.1rem; width: 100%;
 }
 .field textarea { min-height: 6rem; resize: vertical; }
+.field { min-width: 0; }
+.field input[type="date"] {
+  -webkit-appearance: none; appearance: none;
+  display: block; min-width: 0; max-width: 100%;
+  text-align: left; line-height: 1.8rem;
+}
+.field input[type="date"]::-webkit-date-and-time-value { text-align: left; }
+.field input[type="date"]::-webkit-calendar-picker-indicator { opacity: .7; }
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: .5rem; }
 .seg button { min-height: 3.2rem; border-radius: .9rem; border: 2px solid var(--ink); background: #fff; font-weight: 700; padding: .3rem; }
 .seg button[aria-pressed="true"] { background: var(--ink); color: #fff; }

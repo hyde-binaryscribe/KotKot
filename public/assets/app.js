@@ -272,6 +272,46 @@
     ? `<span class="avatar ${cls}" aria-hidden="true"><img src="${photoUrl(hen.photo)}" alt=""></span>`
     : `<span class="avatar ${cls}" style="background:${henColor(hen)}" aria-hidden="true">${h(hen.name[0].toUpperCase())}</span>`;
   const photoUrl = (photoId) => `${API}?a=photo&id=${photoId}`;
+  // Kinds of poultry (same keys as the server)
+  const SPECIES = {
+    poule: { one: 'poule', many: 'poules', egg: 'œuf de poule', eggs: 'œufs de poule' },
+    caille: { one: 'caille', many: 'cailles', egg: 'œuf de caille', eggs: 'œufs de caille' },
+    canard: { one: 'canard', many: 'canards', egg: 'œuf de cane', eggs: 'œufs de cane' },
+    oie: { one: 'oie', many: 'oies', egg: 'œuf d\'oie', eggs: 'œufs d\'oie' },
+    dinde: { one: 'dinde', many: 'dindes', egg: 'œuf de dinde', eggs: 'œufs de dinde' },
+    pintade: { one: 'pintade', many: 'pintades', egg: 'œuf de pintade', eggs: 'œufs de pintade' },
+    autre: { one: 'autre', many: 'autres', egg: 'autre œuf', eggs: 'autres œufs' },
+  };
+  const cap = (t) => t.charAt(0).toUpperCase() + t.slice(1);
+  const sp = (x) => SPECIES[x?.species || x] ? (x?.species || x) : 'poule';
+  /** Kinds living in this household, in a stable order (hens first). */
+  const speciesPresent = () => {
+    const set = new Set((S.hens || []).map((x) => sp(x)));
+    if (!set.size) set.add('poule');
+    return Object.keys(SPECIES).filter((k) => set.has(k));
+  };
+  const onlyHens = () => { const p = speciesPresent(); return p.length === 1 && p[0] === 'poule'; };
+  const flockTitle = () => (onlyHens() ? 'poules' : 'volailles');
+  const flockSummary = () => {
+    const hens = S.hens || [];
+    if (!hens.length) return '0 ' + (onlyHens() ? 'poule' : 'animal');
+    return speciesPresent().map((k) => { const n = hens.filter((x) => sp(x) === k).length; return `${n} ${n > 1 ? SPECIES[k].many : SPECIES[k].one}`; }).join(' · ');
+  };
+  /** Egg counters to show: kinds present, plus any kind already counted today. */
+  const eggSpecies = () => {
+    const today = Object.keys(S.eggs?.todayBySpecies || {}).filter((k) => S.eggs.todayBySpecies[k] > 0);
+    const set = new Set([...speciesPresent(), ...today]);
+    return Object.keys(SPECIES).filter((k) => set.has(k));
+  };
+  /** "3 mois", "1 an et 2 mois" from a number of days. */
+  function spanDays(days) {
+    if (days < 14) return plural(Math.max(days, 0), 'jour', 'jours');
+    if (days < 60) return plural(Math.round(days / 7), 'semaine', 'semaines');
+    const months = Math.round(days / 30.44);
+    if (months < 12) return `${months} mois`;
+    const y = Math.floor(months / 12), m = months % 12;
+    return plural(y, 'an', 'ans') + (m ? ` et ${m} mois` : '');
+  }
   const henColor = (hen) => ['#B5470B', '#1E3A5F', '#1F6B3A', '#6B3A8A', '#8A5A12', '#5B6B57', '#9B1C4A'][hen.id % 7];
 
   // ------------------------------------------------------------------ écrans
@@ -628,7 +668,7 @@
       <nav class="home-tiles" aria-label="Menu principal">
         <a class="tile yolk" href="#/oeufs">${I.egg}<span><span class="t-title" style="display:block">Œufs</span><span class="t-sub">${S.eggs?.today ?? 0} aujourd'hui</span></span></a>
         <a class="tile" href="#/taches">${I.tasks}<span><span class="t-title" style="display:block">Tâches</span><span class="t-sub">${tc.done} faite${tc.done > 1 ? 's' : ''} sur ${tc.total}</span></span></a>
-        <a class="tile green" href="#/poules">${I.hen}<span><span class="t-title" style="display:block">Poules</span><span class="t-sub">${plural(hens.length, 'poule', 'poules')}${watch ? ` · ${watch} à surveiller` : ''}</span></span></a>
+        <a class="tile green" href="#/poules">${I.hen}<span><span class="t-title" style="display:block">${cap(flockTitle())}</span><span class="t-sub">${h(flockSummary())}${watch ? ` · ${watch} à surveiller` : ''}</span></span></a>
       </nav>`;
   }
 
@@ -641,8 +681,7 @@
       <h1>Les œufs</h1>
       ${offlineBanner()}
       <div class="card big-count"><span class="muted">Aujourd'hui</span><span class="num">${e.today}</span><span class="muted">${e.today > 1 ? 'œufs ramassés' : 'œuf ramassé'}</span></div>
-      <button class="btn primary huge" type="button" data-act="egg" data-delta="1">${I.eggPlus} +1 œuf</button>
-      <button class="btn" type="button" data-act="egg" data-delta="-1" ${e.today ? '' : 'disabled'}>−1 (je me suis trompé)</button>
+      ${eggButtons()}
       <a class="btn" href="#/oeufs/calendrier">${I.calendar} Calendrier · un jour oublié ?</a>
       <div class="grid2">
         <div class="card stat"><span class="label">7 derniers jours</span><span class="value">${e.last7}</span></div>
@@ -658,17 +697,47 @@
       </div>` : ''}`;
   }
 
-  function eggChange(delta) {
+  /** One kind: the big +1 as before. Several kinds: one counter per kind. */
+  function eggButtons() {
+    const kinds = eggSpecies();
+    const by = S.eggs?.todayBySpecies || {};
+    if (kinds.length === 1) {
+      const k = kinds[0];
+      return `
+        <button class="btn primary huge" type="button" data-act="egg" data-delta="1" data-species="${k}">${I.eggPlus} +1 œuf</button>
+        <button class="btn" type="button" data-act="egg" data-delta="-1" data-species="${k}" ${by[k] ? '' : 'disabled'}>−1 (je me suis trompé)</button>`;
+    }
+    return kinds.map((k) => `
+      <div class="card egg-kind">
+        <div class="row between"><b>${cap(SPECIES[k].eggs)}</b><span class="egg-kind-n">${by[k] || 0}</span></div>
+        <div class="egg-kind-btns">
+          <button class="btn" type="button" data-act="egg" data-delta="-1" data-species="${k}" ${by[k] ? '' : 'disabled'} aria-label="Retirer un ${SPECIES[k].egg}">−1</button>
+          <button class="btn primary big" type="button" data-act="egg" data-delta="1" data-species="${k}">${I.eggPlus} +1</button>
+        </div>
+      </div>`).join('');
+  }
+
+  function eggChange(delta, species = 'poule') {
     const e = S.eggs;
-    if (delta < 0 && e.today <= 0) return;
+    e.todayBySpecies = e.todayBySpecies || {};
+    if (delta < 0 && !(e.todayBySpecies[species] > 0)) return;
     const apply = (d) => {
       e.today = Math.max(0, e.today + d); e.last7 = Math.max(0, e.last7 + d); e.last30 = Math.max(0, e.last30 + d);
+      e.todayBySpecies[species] = Math.max(0, (e.todayBySpecies[species] || 0) + d);
       const last = e.days[e.days.length - 1]; if (last) last.count = Math.max(0, last.count + d);
+      const c = monthCache[monthOf(S.today)];
+      if (c?.fetchedAt) {
+        const by = (c.bySpecies[S.today] = c.bySpecies[S.today] || {});
+        by[species] = Math.max(0, (by[species] || 0) + d);
+        c.days[S.today] = Math.max(0, (c.days[S.today] || 0) + d);
+        c.total = Math.max(0, c.total + d);
+      }
     };
     apply(delta);
-    const clientId = enqueue('egg', { delta });
+    const clientId = enqueue('egg', { delta, species });
     if (navigator.vibrate) navigator.vibrate(30);
-    toast(delta > 0 ? `+1 œuf · ${e.today} aujourd'hui` : '1 œuf retiré', () => {
+    const label = eggSpecies().length > 1 ? SPECIES[species].egg : 'œuf';
+    toast(delta > 0 ? `+1 ${label} · ${e.todayBySpecies[species]} aujourd'hui` : `1 ${label} retiré`, () => {
       apply(-delta);
       enqueue('egg_undo', { clientId });
     });
@@ -753,6 +822,8 @@
     calMonth = monthOf(day);
     const c = month(calMonth);
     const n = c.fetchedAt ? (c.days[day] || 0) : null;
+    const kinds = eggSpecies();
+    if (kinds.length > 1) return viewEggDayKinds(day, c, n, kinds);
     const prev = addDays(day, -1);
     const next = addDays(day, 1);
     return `
@@ -761,10 +832,10 @@
       ${offlineBanner()}
       <div class="card big-count"><span class="muted">Œufs ramassés ce jour-là</span><span class="num">${n === null ? '…' : n}</span></div>
       <div class="grid2">
-        <button class="btn big" type="button" data-act="eggDay" data-day="${day}" data-delta="-1" ${n ? '' : 'disabled'}>−1</button>
-        <button class="btn primary big" type="button" data-act="eggDay" data-day="${day}" data-delta="1" ${n === null ? 'disabled' : ''}>${I.eggPlus} +1</button>
+        <button class="btn big" type="button" data-act="eggDay" data-day="${day}" data-species="${kinds[0]}" data-delta="-1" ${n ? '' : 'disabled'}>−1</button>
+        <button class="btn primary big" type="button" data-act="eggDay" data-day="${day}" data-species="${kinds[0]}" data-delta="1" ${n === null ? 'disabled' : ''}>${I.eggPlus} +1</button>
       </div>
-      <form class="card stack" data-form="eggDay" data-day="${day}">
+      <form class="card stack" data-form="eggDay" data-day="${day}" data-species="${kinds[0]}">
         <div class="field"><label for="eggn">Ou tapez le nombre d'œufs</label>
           <input id="eggn" name="count" type="number" inputmode="numeric" min="0" max="500" required placeholder="${n ?? ''}"></div>
         <button class="btn" type="submit">Enregistrer</button>
@@ -775,29 +846,66 @@
       </div>`;
   }
 
-  /** Sets the count of a day: right away on screen, sent when possible, with Annuler. */
-  function eggSetDay(day, count) {
+  function viewEggDayKinds(day, c, n, kinds) {
+    const by = c.bySpecies?.[day] || {};
+    const prev = addDays(day, -1);
+    const next = addDays(day, 1);
+    return `
+      ${back('#/oeufs/calendrier', 'Calendrier')}
+      <h1>${h(fmtDayLong(day))}</h1>
+      ${offlineBanner()}
+      <div class="card big-count"><span class="muted">Œufs ramassés ce jour-là</span><span class="num">${n === null ? '…' : n}</span></div>
+      ${kinds.map((k) => `
+        <div class="card egg-kind">
+          <div class="row between"><b>${cap(SPECIES[k].eggs)}</b><span class="egg-kind-n">${n === null ? '…' : by[k] || 0}</span></div>
+          <div class="egg-kind-btns">
+            <button class="btn" type="button" data-act="eggDay" data-day="${day}" data-species="${k}" data-delta="-1" ${by[k] ? '' : 'disabled'}>−1</button>
+            <button class="btn primary big" type="button" data-act="eggDay" data-day="${day}" data-species="${k}" data-delta="1" ${n === null ? 'disabled' : ''}>${I.eggPlus} +1</button>
+          </div>
+          <form class="row" data-form="eggDay" data-day="${day}" data-species="${k}">
+            <label class="sr" for="eggn-${k}">Nombre d'${h(SPECIES[k].eggs)}</label>
+            <input id="eggn-${k}" class="grow num-input" name="count" type="number" inputmode="numeric" min="0" max="500" required placeholder="Nombre">
+            <button class="btn" type="submit">OK</button>
+          </form>
+        </div>`).join('')}
+      <div class="grid2">
+        ${prev >= `${oldestMonth()}-01` ? `<a class="btn" href="#/oeufs/jour/${prev}">‹ La veille</a>` : '<span></span>'}
+        ${next <= S.today ? `<a class="btn" href="#/oeufs/jour/${next}">Le lendemain ›</a>` : ''}
+      </div>`;
+  }
+
+  /** Sets the count of a day for one kind: right away on screen, sent when possible, with Annuler. */
+  function eggSetDay(day, count, species = 'poule') {
     const m = monthOf(day);
-    const c = monthCache[m] || (monthCache[m] = { month: m, days: {}, total: 0, fetchedAt: Date.now() });
-    const before = c.days[day] || 0;
+    const c = monthCache[m] || (monthCache[m] = { month: m, days: {}, bySpecies: {}, total: 0, fetchedAt: Date.now() });
+    c.bySpecies = c.bySpecies || {};
+    const before = c.bySpecies[day]?.[species] || 0;
     count = Math.max(0, Math.min(500, Math.round(count)));
     if (count === before) return;
     const apply = (v) => {
-      const diff = v - (c.days[day] || 0);
-      if (v) c.days[day] = v; else delete c.days[day];
+      const by = (c.bySpecies[day] = c.bySpecies[day] || {});
+      const diff = v - (by[species] || 0);
+      if (v) by[species] = v; else delete by[species];
+      const total = (c.days[day] || 0) + diff;
+      if (total > 0) c.days[day] = total; else delete c.days[day];
       c.total += diff;
       const e = S.eggs;
       const ago = daysBetween(day, S.today);
-      if (ago === 0) e.today = Math.max(0, e.today + diff);
+      if (ago === 0) {
+        e.today = Math.max(0, e.today + diff);
+        e.todayBySpecies = e.todayBySpecies || {};
+        e.todayBySpecies[species] = Math.max(0, (e.todayBySpecies[species] || 0) + diff);
+      }
       if (ago < 7) e.last7 = Math.max(0, e.last7 + diff);
       if (ago < 30) e.last30 = Math.max(0, e.last30 + diff);
       const bar = e.days.find((x) => x.day === day);
       if (bar) bar.count = Math.max(0, bar.count + diff);
     };
     apply(count);
-    const clientId = enqueue('egg_set', { day, count });
+    const clientId = enqueue('egg_set', { day, count, species });
     if (navigator.vibrate) navigator.vibrate(30);
-    toast(`${fmtDayLong(day)} : ${plural(count, 'œuf', 'œufs')}`, () => {
+    const what = eggSpecies().length > 1 ? (count > 1 ? SPECIES[species].eggs : SPECIES[species].egg) : (count > 1 ? 'œufs' : 'œuf');
+    toast(`${fmtDayLong(day)} : ${count} ${what}`, () => {
       apply(before);
       enqueue('egg_undo', { clientId });
     });
@@ -912,18 +1020,19 @@
     const hens = S.hens || [];
     return `
       ${back('#/', 'Accueil')}
-      <div class="row between"><h1>Mes poules</h1><b style="font-size:1.15rem">${plural(hens.length, 'poule', 'poules')}</b></div>
-      <a class="btn primary" href="#/poule/nouvelle">${I.plus} Ajouter une poule</a>
+      <h1>Mes ${flockTitle()}</h1>
+      <p class="muted" style="margin:-.4rem 0 0">${h(flockSummary())}</p>
+      <a class="btn primary" href="#/poule/nouvelle">${I.plus} Ajouter ${onlyHens() ? 'une poule' : 'un animal'}</a>
       <div class="grid2">
         <a class="btn" href="#/sante">${I.heart} Carnet santé${S.health?.due.length ? ` (${S.health.due.length})` : ''}</a>
-        <a class="btn" href="#/race">Quelle race ?</a>
+        <a class="btn" href="#/race">Race de poule ?</a>
       </div>
       <div class="grid2">
         ${hens.map((x) => `<a class="hen-card" href="#/poule/${x.id}">${henAvatar(x, 'xl')}<span class="name">${h(x.name)}</span>
-          ${x.breed ? `<span class="muted">${h(x.breed)}</span>` : ''}
+          ${[onlyHens() ? '' : cap(SPECIES[sp(x)].one), x.breed].filter(Boolean).length ? `<span class="muted">${h([onlyHens() ? '' : cap(SPECIES[sp(x)].one), x.breed].filter(Boolean).join(' · '))}</span>` : ''}
           <span class="pill ${x.status === 'watch' ? 'watch' : ''}">${x.status === 'watch' ? 'À surveiller' : 'En forme'}</span></a>`).join('')}
       </div>
-      ${hens.length ? '' : '<p class="muted">Ajoutez vos poules une par une : un nom suffit, le reste est facultatif.</p>'}`;
+      ${hens.length ? '' : '<p class="muted">Ajoutez vos poules (ou cailles, canards…) une par une : un nom suffit, le reste est facultatif.</p>'}`;
   }
 
   let notesFor = null;
@@ -931,7 +1040,7 @@
   let photos = [];
   let photoDate = '';
   async function loadNotes(id) {
-    notesFor = id; notes = []; photos = [];
+    notesFor = id; notes = []; photos = []; photoError = '';
     try {
       const [n, p] = await Promise.all([post('hen_notes', { id }), post('hen_photos', { id })]);
       notes = n.notes; photos = p.photos;
@@ -939,16 +1048,11 @@
     if (route().name === 'poule') render();
   }
 
-  /** "3 mois", "1 an et 2 mois": the age difference between two photos. */
-  function span(fromTs, toTs) {
-    const days = Math.round((toTs - fromTs) / 86400);
-    if (days < 14) return plural(Math.max(days, 0), 'jour', 'jours');
-    if (days < 60) return plural(Math.round(days / 7), 'semaine', 'semaines');
-    const months = Math.round(days / 30.44);
-    if (months < 12) return `${months} mois`;
-    const y = Math.floor(months / 12), m = months % 12;
-    return plural(y, 'an', 'ans') + (m ? ` et ${m} mois` : '');
-  }
+  /** Time between two photos. */
+  const span = (fromTs, toTs) => spanDays(Math.round((toTs - fromTs) / 86400));
+  /** Age of the animal on a photo, when its birth date is known. */
+  const ageAt = (hen, ts) => (hen.bornOn ? spanDays(daysBetween(hen.bornOn, dayKey(ts))) : null);
+  let photoError = '';
   const fmtDate = (ts) => new Intl.DateTimeFormat('fr-FR', { timeZone: tz(), day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(ts * 1000));
 
   function albumSection(hen) {
@@ -959,27 +1063,28 @@
       <h2>Album photo</h2>
       ${photos.length >= 2 ? `
       <div class="card stack">
-        <b>Elle a bien changé en ${span(first.at, last.at)} !</b>
+        <b>Bien changé en ${span(first.at, last.at)} !</b>
         <div class="grid2">
-          <figure class="photo-fig"><img src="${photoUrl(first.id)}" alt="${h(hen.name)} le ${h(fmtDate(first.at))}"><figcaption>Avant · ${h(fmtDate(first.at))}</figcaption></figure>
-          <figure class="photo-fig"><img src="${photoUrl(last.id)}" alt="${h(hen.name)} le ${h(fmtDate(last.at))}"><figcaption>Maintenant · ${h(fmtDate(last.at))}</figcaption></figure>
+          <figure class="photo-fig"><img src="${photoUrl(first.id)}" alt="${h(hen.name)} le ${h(fmtDate(first.at))}"><figcaption>Avant · ${h(fmtDate(first.at))}${ageAt(hen, first.at) ? `<br><span class="muted">à ${ageAt(hen, first.at)}</span>` : ''}</figcaption></figure>
+          <figure class="photo-fig"><img src="${photoUrl(last.id)}" alt="${h(hen.name)} le ${h(fmtDate(last.at))}"><figcaption>Maintenant · ${h(fmtDate(last.at))}${ageAt(hen, last.at) ? `<br><span class="muted">à ${ageAt(hen, last.at)}</span>` : ''}</figcaption></figure>
         </div>
       </div>` : ''}
       ${photos.length ? `
       <div class="album" role="list">
         ${photos.map((p) => `<figure class="photo-fig" role="listitem">
           <a href="${photoUrl(p.id)}" target="_blank" rel="noopener"><img src="${photoUrl(p.id)}" alt="${h(hen.name)} le ${h(fmtDate(p.at))}" loading="lazy"></a>
-          <figcaption>${h(fmtDate(p.at))}${first && p.id !== first.id ? `<br><span class="muted">+ ${span(first.at, p.at)}</span>` : ''}</figcaption>
+          <figcaption>${h(fmtDate(p.at))}${ageAt(hen, p.at) ? `<br><span class="muted">à ${ageAt(hen, p.at)}</span>` : first && p.id !== first.id ? `<br><span class="muted">+ ${span(first.at, p.at)}</span>` : ''}</figcaption>
           <button class="btn" type="button" data-act="photoRemove" data-id="${hen.id}" data-photo-id="${p.id}" style="min-height:2.8rem;padding:.2rem .6rem">Suppr.</button>
         </figure>`).join('')}
-      </div>` : '<p class="muted" style="margin:0">Prenez-la en photo de temps en temps (par exemple chaque mois) pour voir comment elle grandit.</p>'}
+      </div>` : '<p class="muted" style="margin:0">Une photo de temps en temps (par exemple chaque mois) pour voir comment il ou elle grandit.</p>'}
+      ${photoError ? `<div class="error" role="alert">${h(photoError)}</div>` : ''}
       ${!S.household?.premium && photos.length >= S.household.freePhotos ? `
       <div class="card stack"><b>L'album gratuit garde ${S.household.freePhotos} photos par poule.</b>
         <a class="btn primary" href="#/premium">Album illimité avec Premium</a></div>` : `
       <div class="card stack">
-        <div class="field"><label for="pdate">Date de la photo</label>
+        <div class="field"><label for="pdate">Date de la photo (facultatif)</label>
           <input id="pdate" type="date" max="${today}" value="${h(photoDate)}" data-photo-date>
-          <span class="muted">Laissez vide pour la date d'aujourd'hui (ou celle de l'appareil photo).</span></div>
+          <span class="muted">Sinon : la date où la photo a été prise.</span></div>
         <label class="btn primary">${I.camera} Ajouter une photo<input class="sr" type="file" accept="image/*" data-photo="${hen.id}"></label>
       </div>`}`;
   }
@@ -1001,9 +1106,16 @@
     if (!hen) return `${back('#/poules', 'Mes poules')}<p>Cette poule n'est plus dans la liste.</p>`;
     if (r.sub === 'modifier') return viewHenForm(hen);
     if (notesFor !== hen.id) loadNotes(hen.id);
-    const rows = [['Arrivée', hen.arrived], ['Signe distinctif', hen.mark], ['Couleur des œufs', hen.eggColor]].filter(([, v]) => v);
+    const since = (iso) => spanDays(daysBetween(iso, S.today));
+    const rows = [
+      ['Espèce', onlyHens() ? '' : cap(SPECIES[sp(hen)].one)],
+      ['Naissance', hen.bornOn ? `${fmtLongDay(hen.bornOn)} (${since(hen.bornOn)})` : ''],
+      ['Arrivée', hen.arrivedOn ? `${fmtLongDay(hen.arrivedOn)} (il y a ${since(hen.arrivedOn)})` : hen.arrived],
+      ['Signe distinctif', hen.mark],
+      ['Couleur des œufs', hen.eggColor],
+    ].filter(([, v]) => v);
     return `
-      ${back('#/poules', 'Mes poules')}
+      ${back('#/poules', `Mes ${flockTitle()}`)}
       ${err()}
       <div class="row">
         ${henAvatar(hen, 'xl')}
@@ -1011,7 +1123,7 @@
           <span><span class="pill ${hen.status === 'watch' ? 'watch' : ''}">${hen.status === 'watch' ? 'À surveiller' : 'En forme'}</span></span></div>
       </div>
       ${rows.length ? `<div class="card list">${rows.map(([k, v]) => `<div class="kv"><span class="muted">${k}</span><b>${h(v)}</b></div>`).join('')}</div>` : ''}
-      <button class="btn big" type="button" data-act="henStatus" data-id="${hen.id}" data-v="${hen.status === 'watch' ? 'ok' : 'watch'}">${hen.status === 'watch' ? 'Elle va mieux' : 'Elle ne va pas bien'}</button>
+      <button class="btn big" type="button" data-act="henStatus" data-id="${hen.id}" data-v="${hen.status === 'watch' ? 'ok' : 'watch'}">${hen.status === 'watch' ? 'Va mieux' : 'Ne va pas bien'}</button>
       <h2>Carnet</h2>
       <form class="stack" data-form="note" data-id="${hen.id}">
         <div class="field"><label class="sr" for="note">Nouvelle note</label><textarea id="note" name="text" maxlength="1000" placeholder="Ce que vous avez remarqué…"></textarea></div>
@@ -1024,33 +1136,83 @@
       </div>
       ${albumSection(hen)}
       ${henHealth(hen)}
-      ${hen.breed ? '' : `<a class="btn" href="#/race/${hen.id}">Trouver sa race</a>`}
+      ${hen.breed || sp(hen) !== 'poule' ? '' : `<a class="btn" href="#/race/${hen.id}">Trouver sa race</a>`}
       <a class="btn" href="#/poule/${hen.id}/modifier">Modifier la fiche</a>
       <button class="btn danger" type="button" data-act="henRemove" data-id="${hen.id}">Retirer du poulailler</button>`;
   }
 
+  let formSpecies = null;
+  let formFor = null;
   function viewHenForm(hen) {
-    const v = hen || { name: '', breed: '', arrived: '', mark: '', eggColor: '' };
+    const v = hen || { name: '', breed: '', arrived: '', mark: '', eggColor: '', bornOn: '', arrivedOn: '' };
+    if (formFor !== (hen ? hen.id : 'new')) { formFor = hen ? hen.id : 'new'; formSpecies = hen ? sp(hen) : store.get('kk-last-species', 'poule'); }
     const field = (name, label, ph, max = 60) => `<div class="field"><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" value="${h(v[name])}" maxlength="${max}" placeholder="${ph}"></div>`;
+    const dateField = (name, label, hint = '') => `<div class="field"><label for="f-${name}">${label} <span class="muted" style="font-weight:400">(facultatif)</span></label>
+      <input id="f-${name}" name="${name}" type="date" max="${S.today}" min="1990-01-01" value="${h(v[name] || '')}">${hint}</div>`;
     return `
-      ${back(hen ? `#/poule/${hen.id}` : '#/poules', hen ? hen.name : 'Mes poules')}
-      <h1>${hen ? 'Modifier la fiche' : 'Nouvelle poule'}</h1>
+      ${back(hen ? `#/poule/${hen.id}` : '#/poules', hen ? hen.name : `Mes ${flockTitle()}`)}
+      <h1>${hen ? 'Modifier la fiche' : 'Nouvel animal'}</h1>
       ${err()}
       <form class="stack" data-form="hen" data-id="${hen ? hen.id : ''}">
+        <div class="field"><span class="lab">Quel animal ?</span>
+          <div class="seg wrap">${Object.keys(SPECIES).map((k) => `<button type="button" data-act="formSpecies" data-v="${k}" aria-pressed="${formSpecies === k}">${cap(SPECIES[k].one)}</button>`).join('')}</div></div>
         <div class="field"><label for="f-name">Son nom</label><input id="f-name" name="name" value="${h(v.name)}" maxlength="40" required></div>
-        ${field('breed', 'Race ou couleur', 'Ex. Rousse')}
-        ${hen ? `<a href="#/race/${hen.id}" style="margin-top:-.5rem">Je ne sais pas : m'aider à trouver sa race</a>` : ''}
-        ${field('arrived', 'Arrivée', 'Ex. mars 2025', 30)}
+        ${field('breed', 'Race ou couleur', formSpecies === 'poule' ? 'Ex. Rousse' : 'Ex. Japonaise')}
+        ${hen && formSpecies === 'poule' ? `<a href="#/race/${hen.id}" style="margin-top:-.5rem">Je ne sais pas : m'aider à trouver sa race</a>` : ''}
+        ${dateField('bornOn', 'Date de naissance', '<span class="muted">Pour connaître son âge, et son âge sur chaque photo.</span>')}
+        ${dateField('arrivedOn', 'Date d\'arrivée', v.arrived && !v.arrivedOn ? `<span class="muted">Noté avant : « ${h(v.arrived)} »</span>` : '')}
         ${field('mark', 'Signe distinctif', 'Ex. bague bleue', 80)}
         ${field('eggColor', 'Couleur des œufs', 'Ex. brun clair', 30)}
         <button class="btn primary big block" type="submit">Enregistrer</button>
       </form>`;
   }
 
+  /**
+   * Phones take 3–10 MB photos (iPhone: HEIC): the phone itself turns them into a
+   * light JPEG (1600 px, ~300 KB) before sending. Faster on 4G, and no server limit to hit.
+   */
+  async function shrinkPhoto(file) {
+    let source = null;
+    try {
+      source = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    } catch {
+      try {
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        await img.decode();
+        source = img;
+      } catch { return file; } // the server will try with the original
+    }
+    const w = source.width || source.naturalWidth;
+    const hgt = source.height || source.naturalHeight;
+    const scale = Math.min(1, 1600 / Math.max(w, hgt));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * scale);
+    canvas.height = Math.round(hgt * scale);
+    canvas.getContext('2d').drawImage(source, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise((res) => canvas.toBlob(res, 'image/jpeg', 0.85));
+    return blob && blob.size < file.size ? blob : (blob && file.size > 4e6 ? blob : file);
+  }
+
+  /** Date the photo was taken, read from the camera's EXIF data (lost when the photo is shrunk). */
+  async function photoTakenDay(file) {
+    try {
+      const head = new Uint8Array(await file.slice(0, 196608).arrayBuffer());
+      let text = '';
+      for (let i = 0; i < head.length; i += 8192) text += String.fromCharCode.apply(null, head.subarray(i, i + 8192));
+      const m = text.match(/(\d{4}):(\d{2}):(\d{2}) \d{2}:\d{2}:\d{2}/);
+      const day = m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+      return day >= '1990-01-01' && day <= S.today ? day : '';
+    } catch { return ''; }
+  }
+
   async function uploadPhoto(id, file) {
+    photoError = '';
+    toast('Préparation de la photo…');
+    const [small, taken] = await Promise.all([shrinkPhoto(file), photoTakenDay(file)]);
     const form = new FormData();
-    form.append('photo', file);
-    if (photoDate) form.append('date', photoDate);
+    form.append('photo', small, 'photo.jpg');
+    if (photoDate || taken) form.append('date', photoDate || taken);
     toast('Envoi de la photo…');
     try {
       const data = await post('hen_photo', { id, form }, true);
@@ -1058,10 +1220,11 @@
       photos = data.photos;
       photoDate = '';
       toast('Photo ajoutée à l\'album');
-      render();
     } catch (e) {
-      showError(e.status === 0 ? 'Pas de connexion internet.' : e.message);
+      hideToast();
+      photoError = e.status === 0 ? 'Pas de connexion internet : la photo n\'est pas partie. Réessayez quand le téléphone capte.' : e.message;
     }
+    render();
   }
 
   // ---------- réglages
@@ -1393,7 +1556,7 @@
   // ------------------------------------------------------------------ clics
   const actions = {
     toastUndo() { const u = toastUndo; hideToast(); if (u) { u(); render(); } },
-    egg: (el) => eggChange(Number(el.dataset.delta)),
+    egg: (el) => eggChange(Number(el.dataset.delta), el.dataset.species || 'poule'),
     door: (el) => doorChange(el.dataset.action),
     task: (el) => taskToggle(Number(el.dataset.id)),
     taskFreq(el) { newTaskFreq = el.dataset.v; const label = app.querySelector('#tlabel')?.value; render(); if (label) app.querySelector('#tlabel').value = label; },
@@ -1447,10 +1610,12 @@
       go('#/');
     },
     async accountLogout() { await call('account_logout', {}); toast('Déconnecté du compte'); go(S.auth ? '#/reglages' : '#/'); },
+    formSpecies(el) { formSpecies = el.dataset.v; keepForm(() => render()); },
     calMove(el) { calMonth = shiftMonth(calMonth || monthOf(S.today), Number(el.dataset.v)); render(); },
     eggDay(el) {
       const c = monthCache[monthOf(el.dataset.day)];
-      eggSetDay(el.dataset.day, (c?.days[el.dataset.day] || 0) + Number(el.dataset.delta));
+      const k = el.dataset.species || 'poule';
+      eggSetDay(el.dataset.day, (c?.bySpecies?.[el.dataset.day]?.[k] || 0) + Number(el.dataset.delta), k);
       render();
     },
     async leaveHousehold(el) {
@@ -1495,7 +1660,7 @@
     async quizPick(el) {
       const hen = S.hens.find((x) => x.id === quiz.henId);
       if (!hen) return;
-      await call('hen_save', { id: hen.id, name: hen.name, breed: el.dataset.name, arrived: hen.arrived, mark: hen.mark, eggColor: hen.eggColor });
+      await call('hen_save', { id: hen.id, species: sp(hen), name: hen.name, breed: el.dataset.name, bornOn: hen.bornOn, arrivedOn: hen.arrivedOn, mark: hen.mark, eggColor: hen.eggColor });
       toast(`${hen.name} : ${el.dataset.name}`);
       quiz = { step: 0, answers: {}, henId: null };
       go(`#/poule/${hen.id}`);
@@ -1539,7 +1704,7 @@
     eggDay(f, fd) {
       const n = Number(fd.get('count'));
       if (!Number.isFinite(n) || n < 0 || n > 500) return showError('Indiquez un nombre entre 0 et 500.');
-      eggSetDay(f.dataset.day, n);
+      eggSetDay(f.dataset.day, n, f.dataset.species || 'poule');
       f.reset();
       render();
     },
@@ -1618,7 +1783,9 @@
     },
     async hen(f, fd) {
       const id = Number(f.dataset.id || 0);
-      const data = await call('hen_save', { id, name: fd.get('name'), breed: fd.get('breed'), arrived: fd.get('arrived'), mark: fd.get('mark'), eggColor: fd.get('eggColor') });
+      const data = await call('hen_save', { id, species: formSpecies, name: fd.get('name'), breed: fd.get('breed'), bornOn: fd.get('bornOn'), arrivedOn: fd.get('arrivedOn'), mark: fd.get('mark'), eggColor: fd.get('eggColor') });
+      store.set('kk-last-species', formSpecies);
+      formFor = null;
       errorText = ''; toast(id ? 'Fiche enregistrée' : 'Bienvenue à elle !'); go(`#/poule/${data.id}`);
     },
     async note(f, fd) {

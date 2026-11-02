@@ -123,15 +123,16 @@ function action_egg(array $in): array
     }
     $at = client_time($in['at'] ?? null);
     $day = local_day($at);
+    $species = species($in['species'] ?? null);
     if ($delta === -1) {
-        $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ?');
-        $st->execute([$day]);
+        $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ? AND species = ?');
+        $st->execute([$day, $species]);
         if ((int) $st->fetchColumn() <= 0) {
             return []; // never below zero
         }
     }
-    db()->prepare('INSERT OR IGNORE INTO eggs (client_id, day, delta, person_id, created_at) VALUES (?, ?, ?, ?, ?)')
-        ->execute([client_id($in['clientId'] ?? null), $day, $delta, me_id(), $at]);
+    db()->prepare('INSERT OR IGNORE INTO eggs (client_id, day, delta, person_id, created_at, species) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([client_id($in['clientId'] ?? null), $day, $delta, me_id(), $at, $species]);
     return [];
 }
 
@@ -170,12 +171,13 @@ function action_egg_set(array $in): array
             return []; // already received (sent again after being offline)
         }
     }
-    $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ?');
-    $st->execute([$day]);
+    $species = species($in['species'] ?? null);
+    $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ? AND species = ?');
+    $st->execute([$day, $species]);
     $delta = $count - max(0, (int) $st->fetchColumn());
     if ($delta !== 0) {
-        db()->prepare('INSERT INTO eggs (client_id, day, delta, person_id, created_at) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$cid, $day, $delta, me_id(), now_ts()]);
+        db()->prepare('INSERT INTO eggs (client_id, day, delta, person_id, created_at, species) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$cid, $day, $delta, me_id(), now_ts(), $species]);
     }
     return [];
 }
@@ -185,15 +187,17 @@ function action_egg_month(array $in): array
 {
     require_auth();
     $month = is_string($in['month'] ?? null) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $in['month']) ? $in['month'] : now()->format('Y-m');
-    $st = db()->prepare('SELECT day, SUM(delta) AS n FROM eggs WHERE day LIKE ? GROUP BY day');
+    $st = db()->prepare('SELECT day, species, SUM(delta) AS n FROM eggs WHERE day LIKE ? GROUP BY day, species');
     $st->execute([$month . '-%']);
     $days = [];
+    $bySpecies = [];
     foreach ($st->fetchAll() as $r) {
         if ((int) $r['n'] > 0) {
-            $days[$r['day']] = (int) $r['n'];
+            $days[$r['day']] = ($days[$r['day']] ?? 0) + (int) $r['n'];
+            $bySpecies[$r['day']][$r['species']] = (int) $r['n'];
         }
     }
-    return ['month' => ['month' => $month, 'days' => $days, 'total' => array_sum($days)]];
+    return ['month' => ['month' => $month, 'days' => $days, 'bySpecies' => $bySpecies, 'total' => array_sum($days)]];
 }
 
 function action_egg_undo(array $in): array
@@ -281,21 +285,40 @@ function action_hen_save(array $in): array
     require_auth();
     $name = clean_text($in['name'] ?? '', 40);
     if ($name === '') {
-        throw new ApiError('Donnez un nom à la poule.');
+        throw new ApiError('Donnez-lui un nom.');
+    }
+    $today = now()->format('Y-m-d');
+    $date = function (string $key, string $what) use ($in, $today): ?string {
+        $v = $in[$key] ?? null;
+        if ($v === null || $v === '') {
+            return null;
+        }
+        $d = valid_day($v);
+        if ($d === null || $d > $today || $d < '1990-01-01') {
+            throw new ApiError("La date $what n'est pas possible.");
+        }
+        return $d;
+    };
+    $born = $date('bornOn', 'de naissance');
+    $arrived = $date('arrivedOn', 'd\'arrivée');
+    if ($born !== null && $arrived !== null && $arrived < $born) {
+        throw new ApiError('Elle ne peut pas être arrivée avant sa naissance.');
     }
     $fields = [
         $name,
+        species($in['species'] ?? null),
         clean_text($in['breed'] ?? '', 60),
-        clean_text($in['arrived'] ?? '', 30),
+        $arrived,
+        $born,
         clean_text($in['mark'] ?? '', 80),
         clean_text($in['eggColor'] ?? '', 30),
     ];
     $id = (int) ($in['id'] ?? 0);
     if ($id > 0) {
-        db()->prepare('UPDATE hens SET name = ?, breed = ?, arrived = ?, mark = ?, egg_color = ? WHERE id = ?')
+        db()->prepare('UPDATE hens SET name = ?, species = ?, breed = ?, arrived_on = ?, born_on = ?, mark = ?, egg_color = ? WHERE id = ?')
             ->execute([...$fields, $id]);
     } else {
-        db()->prepare('INSERT INTO hens (name, breed, arrived, mark, egg_color, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        db()->prepare('INSERT INTO hens (name, species, breed, arrived_on, born_on, mark, egg_color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
             ->execute([...$fields, now_ts()]);
         $id = (int) db()->lastInsertId();
     }
@@ -387,8 +410,19 @@ function action_hen_photo(): array
         }
     }
     $file = $_FILES['photo'] ?? null;
-    if (!$file || ($file['error'] ?? 1) !== UPLOAD_ERR_OK || $file['size'] > 15 * 1024 * 1024) {
-        throw new ApiError('La photo n\'a pas pu être envoyée.');
+    if (!$file) {
+        // over post_max_size, PHP drops the whole request body
+        throw (int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > 0
+            ? new ApiError('La photo est trop lourde pour le serveur (limite ' . ini_get('post_max_size') . '). Voir le guide d\'installation, étape 5.', 413)
+            : new ApiError('Aucune photo reçue. Réessayez.');
+    }
+    $error = (int) ($file['error'] ?? UPLOAD_ERR_NO_FILE);
+    if (in_array($error, [UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE], true) || $file['size'] > 15 * 1024 * 1024) {
+        throw new ApiError('La photo est trop lourde pour le serveur (limite ' . ini_get('upload_max_filesize') . '). Voir le guide d\'installation, étape 5.', 413);
+    }
+    if ($error !== UPLOAD_ERR_OK) {
+        error_log("KotKot photo upload error $error");
+        throw new ApiError('La photo n\'a pas pu être envoyée (erreur ' . $error . ' du serveur). Réessayez.');
     }
     $data = file_get_contents($file['tmp_name']);
     $img = $data !== false ? @imagecreatefromstring($data) : false;
