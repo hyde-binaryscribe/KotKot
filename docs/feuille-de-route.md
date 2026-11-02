@@ -32,6 +32,10 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 ## V2.6 — fait
 - [x] **La Gazette du poulailler** : les nouvelles du poulailler en articles comiques (record, grève de la ponte, double jaune, couvre-feu, anniversaire, photo du jour…), à partager en image
 
+## V2.7 — fait
+- [x] **« À la une »** de la Gazette sur l'accueil, différente à chaque ouverture (masquable dans Réglages)
+- [x] Gazette enrichie : des centaines de variantes, et des rubriques quotidiennes (horoscope de la basse-cour, météo du perchoir, petites annonces, portrait, chiffre du jour, conseil de Mamie Poule, pensée du jour, courrier des lecteurs)
+
 ## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité

@@ -675,6 +675,7 @@
         ${I.chev}
       </a>
       ${healthBanner()}
+      ${uneCard()}
       <nav class="home-tiles" aria-label="Menu principal">
         <a class="tile yolk" href="#/oeufs">${I.egg}<span><span class="t-title" style="display:block">Œufs</span><span class="t-sub">${S.eggs?.today ?? 0} aujourd'hui</span></span></a>
         <a class="tile" href="#/taches">${I.tasks}<span><span class="t-title" style="display:block">Tâches</span><span class="t-sub">${tc.done} faite${tc.done > 1 ? 's' : ''} sur ${tc.total}</span></span></a>
@@ -1010,173 +1011,78 @@
     if (route().name === 'gazette') backgroundRender();
   }
 
-  const pick = (id, list) => list[(gazetteVariant[id] || 0) % list.length];
-  const hhmmTs = (ts) => fmtTime(ts);
-  const recentDays = (iso, days) => daysBetween(iso, S.today) <= days;
-  const dayWord = (iso) => (iso === S.today ? 'aujourd\'hui' : daysBetween(iso, S.today) === 1 ? 'hier' : `le ${fmtLongDay(iso)}`);
-
-  /** Every story: what happened, told three ways. Only true facts, only funny words. */
-  function gazetteStories() {
-    const g = gazette || {};
-    const e = S.eggs || {};
-    const hens = S.hens || [];
-    const out = [];
-    const add = (id, kicker, versions, extra = {}) => out.push({ id, kicker, versions, ...extra });
-    const n = e.today || 0;
-    const hour = Number(new Intl.DateTimeFormat('fr-FR', { timeZone: tz(), hour: 'numeric' }).format(new Date()));
-    const avatarOf = (hen) => (hen?.photo ? `${API}?a=avatar&id=${hen.id}&v=${hen.avatar || hen.photo}` : null);
-
-    if (g.record && g.record.count >= 2 && g.record.day === S.today) {
-      add('record', 'Record historique', [
-        [`${g.record.count} œufs aujourd'hui !`, 'Du jamais vu dans l\'histoire du poulailler. Les poules refusent de commenter, mais l\'ambiance est électrique au pondoir.'],
-        ['Le pondoir explose les compteurs', `${g.record.count} œufs en une journée : c'est le nouveau record. Une plaque commémorative est à l'étude.`],
-        ['Historique !', `${g.record.count} œufs ! La rédaction a vérifié trois fois. Les poules, elles, font comme si c'était normal.`],
-      ]);
-    } else if (n >= 1) {
-      add('today', 'Ponte du jour', n === 1 ? [
-        ['Un œuf, un seul, mais quel œuf !', 'La production du jour tient en un exemplaire. La rédaction salue la qualité plutôt que la quantité.'],
-        ['Édition limitée au pondoir', 'Un œuf unique ce jour. Les collectionneurs s\'arrachent déjà la boîte.'],
-      ] : [
-        [`${n} œufs ce jour !`, 'La direction du poulailler salue une « performance remarquable ». Les poules, elles, sont retournées gratter comme si de rien n\'était.'],
-        ['Le pondoir tourne à plein régime', `${n} œufs ramassés. Interrogée, une source proche du perchoir parle d'un « vrai travail d'équipe ».`],
-        ['Coup de chaud sur la production', `Avec ${n} œufs, le poulailler dépasse ses objectifs. Le grain sera-t-il augmenté ? La question est posée.`],
-      ]);
-    } else if (hour >= 12 && hens.length) {
-      add('strike', 'Grève', [
-        ['Grève surprise au pondoir', 'Aucun œuf aujourd\'hui. Les syndicats réclament des vers de farine et une sieste supplémentaire.'],
-        ['Silence radio au nid', 'Zéro œuf à l\'heure où nous écrivons. La rédaction suit la situation de très près.'],
-        ['Les poules en télétravail ?', 'Pas un œuf de la journée. Une réunion de crise est prévue autour de la mangeoire.'],
-      ]);
-    }
-    const quail = e.todayBySpecies?.caille || 0;
-    if (quail) {
-      add('quail', 'Mini mais costauds', [
-        [`${quail} œufs de caille !`, 'Petits par la taille, grands par le talent. La rédaction applaudit des deux ailes.'],
-        ['Les cailles ne lâchent rien', `${quail} mini-œufs ramassés. « On n'a pas besoin d'être grosses pour assurer », confie l'une d'elles.`],
-      ]);
-    }
-    const dbl = (e.quality?.recent || []).find((x) => x.defects.includes('double') && recentDays(x.day, 7));
-    if (dbl) {
-      add('double', 'Insolite', [
-        ['Un œuf à double jaune !', `Découvert ${dayWord(dbl.day)}${dbl.who ? ` par ${dbl.who}` : ''}. Les scientifiques sont perplexes, la pondeuse reste modeste.`],
-        ['Deux pour le prix d\'un', `Un œuf à double jaune ${dayWord(dbl.day)}. Une poule aurait-elle fait des heures supplémentaires ?`],
-      ]);
-    }
-    const crack = (e.quality?.recent || []).find((x) => x.quality !== 'bon' && recentDays(x.day, 3));
-    if (crack) {
-      const dirty = crack.defects.includes('sale');
-      add('fait-divers', 'Fait divers', dirty ? [
-        ['Scandale : un œuf crotté', '« Ce n\'est pas moi ! », jure toute la basse-cour d\'une seule voix. L\'enquête piétine.'],
-        ['L\'affaire de l\'œuf sale', 'Retrouvé dans un état déplorable. Les soupçons se portent sur un passage un peu pressé au pondoir.'],
-      ] : [
-        ['Un œuf mal en point', `Un œuf ${criteriaText(crack.defects) || 'abîmé'} retrouvé ${dayWord(crack.day)}. Aucune poule n'a été mise en examen.`],
-        ['Drame dans la paille', 'Un œuf n\'a pas survécu à sa première journée. Une minute de silence a été observée (environ trois secondes).'],
-      ]);
-    }
-    const week = e.last7 || 0;
-    if (week) {
-      const layers = hens.filter((x) => sp(x) === 'poule').length || hens.length || 1;
-      const per = (week / layers).toLocaleString('fr-FR', { maximumFractionDigits: 1 });
-      add('week', 'La semaine en chiffres', [
-        [`${week} œufs en 7 jours`, `Soit ${per} par pondeuse. À la bourse de l'œuf, les cours s'affolent.`],
-        ['Bilan de la semaine', `${week} œufs au compteur. De quoi faire ${Math.max(1, Math.floor(week / 3))} omelettes de trois œufs. La rédaction a faim.`],
-      ]);
-    }
-    if (g.prevMonthSoFar > 0 && g.month >= 0) {
-      const pct = Math.round(((g.month - g.prevMonthSoFar) / g.prevMonthSoFar) * 100);
-      if (Math.abs(pct) >= 10) {
-        add('economy', 'Économie', pct > 0 ? [
-          [`Ponte en hausse de ${pct} %`, 'Par rapport au mois dernier à la même date. Les économistes parlent d\'un « miracle du grain ».'],
-          ['La croissance est au rendez-vous', `+${pct} % d'œufs ce mois-ci. Le ministère du Poulailler se félicite.`],
-        ] : [
-          [`Ponte en baisse de ${-pct} %`, 'Mue, froid ou simple coup de mou ? Les poules invoquent leur droit à la déconnexion.'],
-          ['Ralentissement au pondoir', `${pct} % d'œufs par rapport au mois dernier. Les experts recommandent patience et vers de farine.`],
-        ]);
-      }
-    }
-    if (g.total >= 100 && !(g.record && g.record.day === S.today)) {
-      const round = Math.floor(g.total / 100) * 100;
-      add('total', 'Chiffre rond', [
-        [`Plus de ${round} œufs depuis le début !`, `De quoi faire ${Math.floor(g.total / 6)} omelettes de six œufs. Personne n'a osé compter les coquilles.`],
-        [`${g.total} œufs au compteur`, 'Mis bout à bout, ils mesureraient… beaucoup. La rédaction n\'a pas de mètre assez long.'],
-      ]);
-    }
-    if (g.record && g.record.count >= 2 && g.record.day !== S.today) {
-      add('record-old', 'Le saviez-vous ?', [
-        [`Le record tient toujours : ${g.record.count} œufs`, `C'était le ${fmtLongDay(g.record.day)}. Depuis, personne n'a fait mieux. Les poules sont-elles sous pression ?`],
-      ]);
-    }
-    const lastClose = (S.door?.history || []).find((x) => x.action === 'close' && Date.now() / 1000 - x.at < 2 * 86400);
-    if (lastClose && S.door?.sunset) {
-      const minutes = Math.round((lastClose.at - (S.door.sunset - (dayKey(lastClose.at) === S.today ? 0 : 86400))) / 60);
-      if (minutes > 60) {
-        add('curfew', 'Couvre-feu', [
-          [`Porte fermée à ${hhmmTs(lastClose.at)}`, `${lastClose.who || 'Quelqu\'un'} a fermé bien après le coucher du soleil. Les poules, couchées depuis longtemps, n'ont rien remarqué. Ouf.`],
-          ['Retard au couvre-feu', `Fermeture de la porte à ${hhmmTs(lastClose.at)}. Le renard, lui, regardait sa montre.`],
-        ]);
-      }
-    }
-    const firstOpen = (S.door?.history || []).find((x) => x.action === 'open' && dayKey(x.at) === S.today);
-    if (firstOpen && Number(new Intl.DateTimeFormat('fr-FR', { timeZone: tz(), hour: 'numeric' }).format(new Date(firstOpen.at * 1000))) < 7) {
-      add('early', 'Lève-tôt', [
-        [`Porte ouverte à ${hhmmTs(firstOpen.at)}`, `${firstOpen.who || 'Quelqu\'un'} était debout avant tout le monde. Les poules exigent des explications.`],
-      ]);
-    }
-    if (g.worker && g.worker.tasks >= 3) {
-      add('worker', 'Palmarès', [
-        [`${g.worker.name}, champion·ne de la semaine`, `${g.worker.tasks} tâches accomplies en 7 jours. Une statue en graines de tournesol est à l'étude.`],
-        [`Tout le monde dit merci à ${g.worker.name}`, `${g.worker.tasks} corvées en une semaine. Les poules envisagent de lui offrir un œuf (un seul, faut pas exagérer).`],
-      ]);
-    }
-    const allDone = (S.tasks || []).filter((t) => t.dueToday);
-    if (allDone.length && allDone.every((t) => t.done)) {
-      add('clean', 'Propreté', [
-        ['Le poulailler impeccable', 'Toutes les tâches du jour sont faites. Les poules envisagent une inspection surprise, gants blancs compris.'],
-      ]);
-    }
-    for (const hen of hens) {
-      if (hen.arrivedOn && recentDays(hen.arrivedOn, 14)) {
-        add(`welcome-${hen.id}`, 'Bienvenue', [
-          [`${hen.name} rejoint la basse-cour`, '« Sérieuse, motivée, bonne picoreuse », d\'après ses nouvelles voisines. Les places au perchoir sont en cours de renégociation.'],
-          [`Arrivée remarquée : ${hen.name}`, 'Premières impressions de l\'équipe : « On attend de voir les œufs. »'],
-        ], { image: avatarOf(hen) });
-      }
-      if (hen.bornOn) {
-        const [, m, d] = hen.bornOn.split('-');
-        const thisYear = `${S.today.slice(0, 4)}-${m}-${d}`;
-        const gap = daysBetween(thisYear, S.today);
-        const years = Number(S.today.slice(0, 4)) - Number(hen.bornOn.slice(0, 4));
-        if (years >= 1 && gap >= 0 && gap <= 3) {
-          add(`birthday-${hen.id}`, 'Anniversaire', [
-            [`Joyeux anniversaire ${hen.name} !`, `${plural(years, 'an', 'ans')} déjà ! Un gâteau aux graines est prévu au goûter. Les invitations ont été picorées.`],
-          ], { image: avatarOf(hen) });
-        }
-      }
-      if (hen.status === 'watch') {
-        add(`health-${hen.id}`, 'Bulletin de santé', [
-          [`${hen.name} se repose`, 'Toute la basse-cour lui souhaite un prompt rétablissement. Les visites sont limitées aux vers de terre.'],
-        ], { image: avatarOf(hen) });
-      }
-    }
-    const shot = (g.photos || [])[0];
-    if (shot) {
-      add(`photo-${shot.photoId}`, 'Photo du jour', [
-        [`${shot.name} prend la pose`, 'Notre photographe est encore sous le charme. Les autres réclament déjà leur séance.'],
-        [`${shot.name}, star de la semaine`, 'Les paparazzis du poulailler ont encore frappé. Aucun démenti de l\'intéressée.'],
-      ], { image: photoUrl(shot.photoId) });
-    }
-    if (!out.length) {
-      add('calm', 'Calme plat', [
-        ['Rien à signaler au poulailler', 'Les poules picorent, le soleil brille. Un journalisme d\'investigation de haut niveau est en cours.'],
-      ]);
-    }
+  /** Today's newspaper, written by assets/gazette.js from the household's real data. */
+  function gazetteStories(extraSalt = 0) {
+    const hourOf = (ts) => Number(new Intl.DateTimeFormat('fr-FR', { timeZone: tz(), hour: 'numeric', hourCycle: 'h23' }).format(new Date(ts * 1000)));
+    const list = window.KOTKOT_GAZETTE.stories({
+      today: S.today,
+      hour: hourOf(Date.now() / 1000),
+      eggs: S.eggs,
+      hens: S.hens,
+      door: S.door,
+      tasks: S.tasks,
+      g: gazette || {},
+      species: sp,
+      avatarOf: (hen) => (hen?.photo ? `${API}?a=avatar&id=${hen.id}&v=${hen.avatar || hen.photo}` : null),
+      photoUrl,
+      longDay: fmtLongDay,
+      dayWord: (iso) => (iso === S.today ? 'aujourd\'hui' : daysBetween(iso, S.today) === 1 ? 'hier' : `le ${fmtLongDay(iso)}`),
+      time: fmtTime,
+      hourOf,
+      plural,
+      daysBetween,
+      dayKey,
+      criteria: (list) => criteriaText(list),
+      salt: (id) => (gazetteVariant[id] || 0) + extraSalt * 7,
+    });
     // French typography: a non-breaking space before ! ? : ; » and after «
     const fr = (t) => t.replace(/ ([!?:;»])/g, '\u00a0$1').replace(/« /g, '«\u00a0');
-    return out.map((st) => {
-      const [title, body] = pick(st.id, st.versions);
+    return list.map((st) => {
       const edit = gazetteEdits[st.id];
-      return { ...st, title: fr(edit?.title ?? title), body: fr(edit?.body ?? body) };
+      return { ...st, title: fr(edit?.title ?? st.title), body: fr(edit?.body ?? st.body) };
     });
+  }
+
+  /**
+   * « À la une » on the home screen: a different story at each opening of the app,
+   * preferring ones not shown lately (remembered on this phone).
+   */
+  let uneChoice = null; // { id, salt }
+  function pickUne() {
+    const seen = store.get('kk-gz-seen', []);
+    const key = (st) => `${st.id}|${st.title}`;
+    // today's stories, then other wordings of them: never the same headline twice in a row of openings
+    let pool = [];
+    for (let salt = 0; salt < 6 && !pool.length; salt++) {
+      pool = gazetteStories(salt).filter((st) => !seen.includes(key(st))).map((st) => ({ ...st, salt }));
+    }
+    if (!pool.length) pool = gazetteStories(0).map((st) => ({ ...st, salt: 0 }));
+    if (!pool.length) return null;
+    // the important news first, then some surprise
+    const top = pool.filter((st) => (st.priority || 0) >= 3);
+    const from = top.length && Math.random() < 0.6 ? top : pool;
+    const chosen = from[Math.floor(Math.random() * from.length)];
+    store.set('kk-gz-seen', [key(chosen), ...seen].slice(0, 80));
+    return { id: chosen.id, salt: chosen.salt };
+  }
+
+  function uneCard() {
+    if (store.get('kk-gz-hide', false) || !S.eggs) return '';
+    if (!gazette || Date.now() - gazetteAt > 300000) loadGazette();
+    if (!gazette) return '';
+    if (!uneChoice) uneChoice = pickUne();
+    if (!uneChoice) return '';
+    const st = gazetteStories(uneChoice.salt).find((x) => x.id === uneChoice.id);
+    if (!st) return '';
+    return `
+      <article class="une" aria-label="À la une de la Gazette">
+        <div class="une-head"><span class="une-name">La Gazette</span><span class="gz-kicker">${h(st.kicker)}</span></div>
+        <a class="une-title" href="#/gazette">${h(st.title)}</a>
+        <div class="une-actions">
+          <button class="btn" type="button" data-act="gazetteShare" data-id="${h(st.id)}" data-salt="${uneChoice.salt}" aria-label="Partager cette nouvelle">${I.share} Partager</button>
+          <button class="btn" type="button" data-act="uneNext" aria-label="Une autre nouvelle">Autre nouvelle</button>
+        </div>
+      </article>`;
   }
 
   function viewGazette() {
@@ -1187,11 +1093,11 @@
       ${back('#/', 'Accueil')}
       <div class="gz-head"><div class="gz-name">La Gazette</div><div class="gz-sub">du poulailler · ${h(S.household?.name || '')}</div>
         <div class="gz-ed">Édition du ${h(edition)}</div></div>
-      <p class="muted" style="margin:0">Les nouvelles du poulailler, à partager avec la famille et les amis. Touchez « Autre version » pour changer le ton.</p>
+      <p class="muted" style="margin:0">Les vraies nouvelles du poulailler racontées pour rire, et quelques rubriques pour jouer. Ça change tous les jours. Touchez « Autre version » pour changer le ton.</p>
       ${gazette ? '' : '<p class="loading">La rédaction tape ses articles…</p>'}
       ${stories.map((st, i) => `
         <article class="gz-card ${i === 0 ? 'gz-top' : ''}">
-          <span class="gz-kicker">${h(st.kicker)}</span>
+          <span class="gz-kicker ${st.game ? 'game' : ''}">${h(st.kicker)}</span>
           ${gazetteEditing === st.id ? `
           <form class="stack" data-form="gazetteEdit" data-id="${h(st.id)}">
             <div class="field"><label for="gz-t">Titre</label><input id="gz-t" name="title" maxlength="120" value="${h(st.title)}"></div>
@@ -1203,7 +1109,7 @@
           <p class="gz-body">${h(st.body)}</p>
           <button class="btn primary" type="button" data-act="gazetteShare" data-id="${h(st.id)}">${I.share} Partager</button>
           <div class="grid2">
-            ${st.versions.length > 1 && !gazetteEdits[st.id] ? `<button class="btn" type="button" data-act="gazetteNext" data-id="${h(st.id)}">Autre version</button>` : '<span></span>'}
+            ${!gazetteEdits[st.id] && st.id !== 'chiffre' ? `<button class="btn" type="button" data-act="gazetteNext" data-id="${h(st.id)}">Autre version</button>` : '<span></span>'}
             <button class="btn" type="button" data-act="gazetteEdit" data-id="${h(st.id)}">Modifier</button>
           </div>`}
         </article>`).join('')}`;
@@ -1290,8 +1196,8 @@
     g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
   }
 
-  async function gazetteShare(id) {
-    const st = gazetteStories().find((x) => x.id === id);
+  async function gazetteShare(id, salt = 0) {
+    const st = gazetteStories(salt).find((x) => x.id === id);
     if (!st) return;
     toast('Mise en page…');
     const blob = await gazetteImage(st);
@@ -1753,6 +1659,12 @@
         <p class="muted" style="margin:0">Changer le code empêche de nouveaux téléphones d'entrer avec l'ancien. Les téléphones déjà connectés le restent.</p>
       </div>
       <div class="card stack">
+        <h2 style="margin:0">La Gazette sur l'accueil</h2>
+        <div class="seg"><button type="button" data-act="uneHide" data-v="0" aria-pressed="${!store.get('kk-gz-hide', false)}">Afficher</button>
+          <button type="button" data-act="uneHide" data-v="1" aria-pressed="${!!store.get('kk-gz-hide', false)}">Masquer</button></div>
+        <p class="muted" style="margin:0">Une nouvelle « À la une » à chaque ouverture de l'appli. Seulement sur ce téléphone.</p>
+      </div>
+      <div class="card stack">
         <h2 style="margin:0">Taille du texte</h2>
         <div class="seg">${[['1', 'Normal'], ['2', 'Grand'], ['3', 'Très grand']].map(([v, l]) => `<button type="button" data-act="size" data-v="${v}" aria-pressed="${size === v}">${l}</button>`).join('')}</div>
         <p class="muted" style="margin:0">Seulement sur ce téléphone.</p>
@@ -2171,7 +2083,9 @@
       crop = null;
       go(`#/poule/${id}`);
     },
-    gazetteShare: (el) => gazetteShare(el.dataset.id),
+    gazetteShare: (el) => gazetteShare(el.dataset.id, Number(el.dataset.salt || 0)),
+    uneNext() { uneChoice = pickUne(); render(); },
+    uneHide(el) { store.set('kk-gz-hide', el.dataset.v === '1'); render(); },
     gazetteNext(el) { gazetteVariant[el.dataset.id] = (gazetteVariant[el.dataset.id] || 0) + 1; render(); },
     gazetteEdit(el) { gazetteEditing = el.dataset.id; render(); document.getElementById('gz-t')?.focus(); },
     gazetteEditCancel() { gazetteEditing = null; render(); },
@@ -2418,7 +2332,12 @@
   applySize();
   window.addEventListener('online', () => { online = true; flush(); refresh(); });
   window.addEventListener('offline', () => setOnline(false));
-  document.addEventListener('visibilitychange', () => { if (!document.hidden) { flush(); refresh(); } });
+  let hiddenAt = 0;
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) { hiddenAt = Date.now(); return; }
+    if (hiddenAt && Date.now() - hiddenAt > 10 * 60000) uneChoice = null; // a new « À la une » when coming back later
+    flush(); refresh();
+  });
   setInterval(() => { if (!document.hidden) refresh(); }, 60000);
 
   // Live sync: every few seconds, a tiny question « anything new? »; the full update only if so.

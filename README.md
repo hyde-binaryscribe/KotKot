@@ -8,6 +8,11 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 - **Marche sans réseau** au fond du jardin : les clics sont gardés sur le téléphone et envoyés dès que ça capte.
 - S'installe comme une appli (PWA) : « Ajouter à l'écran d'accueil ».
 
+## Nouveautés V2.7
+
+- **« À la une »** : à chaque ouverture de l'appli, une nouvelle de la Gazette en haut de l'accueil, jamais la même.
+- La Gazette change tous les jours : des centaines de variantes et 3 rubriques quotidiennes pour rire (horoscope de la basse-cour, météo du perchoir, petites annonces…) ou apprendre (conseil de Mamie Poule, courrier des lecteurs). Textes dans `public/assets/gazette.js`, faciles à enrichir.
+
 ## Nouveautés V2.6
 
 - **La Gazette du poulailler** : chaque jour, les vraies nouvelles du poulailler racontées façon presse à scandale (« Grève surprise au pondoir », « Un œuf à double jaune ! »…). Plusieurs versions par article, texte modifiable, et une belle image à partager (WhatsApp, SMS, réseaux sociaux).
