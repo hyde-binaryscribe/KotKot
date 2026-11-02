@@ -12,7 +12,13 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 - [x] Formule gratuite / Premium prête (album limité à 3 photos, rappels en Premium) — désactivée tant que `billing` est à `false`
 - [x] Vue ordinateur (accueil sur plusieurs colonnes)
 
-## V2.1 — prochaine étape
+## V2.2 — fait
+- [x] **Chacun son compte** (e-mail, Google, Apple) lié à sa personne : le poulailler sur tous ses appareils, sans code
+- [x] **Continuer avec Google / Apple** (activé dans `config.php`)
+- [x] **Synchro en direct** : ce que fait un téléphone apparaît sur les autres en quelques secondes
+- [x] **Calendrier des œufs** : un jour oublié ? on touche le jour et on indique le nombre (jusqu'à 2 ans en arrière)
+
+## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité
 - [ ] **Aide à la race par photo** (IA Claude) — Premium, nécessite une clé d'API

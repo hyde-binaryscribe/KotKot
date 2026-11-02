@@ -34,6 +34,7 @@
     heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 21l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/><path d="M8 11h2l1-2 2 4 1-2h2"/></svg>',
     google: '<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.8 1.2 7.9 3.1l5.7-5.7C34.1 6.1 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C37 39.2 44 34 44 24c0-1.3-.1-2.4-.4-3.5z"/></svg>',
     apple: '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M16.4 12.6c0-2.4 2-3.6 2.1-3.7-1.1-1.7-2.9-1.9-3.5-1.9-1.5-.2-2.9.9-3.7.9-.8 0-1.9-.9-3.2-.8-1.6 0-3.1 1-4 2.4-1.7 3-.4 7.4 1.2 9.8.8 1.2 1.8 2.5 3 2.4 1.2 0 1.7-.8 3.1-.8 1.5 0 1.9.8 3.2.8 1.3 0 2.2-1.2 3-2.4.9-1.4 1.3-2.7 1.3-2.8-.1 0-2.5-1-2.5-3.9zM14 5.5c.7-.8 1.1-1.9 1-3-1 0-2.1.7-2.8 1.5-.6.7-1.2 1.8-1 2.9 1.1.1 2.1-.6 2.8-1.4z"/></svg>',
+    calendar: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
     pin: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>',
   };
 
@@ -284,7 +285,7 @@
       else html = S.account ? viewMyHouseholds() : viewWelcome();
     } else {
       const views = {
-        accueil: viewHome, oeufs: viewEggs, porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
+        accueil: viewHome, oeufs: (x) => (x.id === 'calendrier' ? viewEggCalendar() : x.id === 'jour' ? viewEggDay(x) : viewEggs()), porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
         poules: viewHens, poule: viewHen, reglages: viewSettings, qui: viewWho, sante: viewHealth, race: viewBreed,
         compte: viewAccount, premium: viewPremium, foyer: viewHouseholdCreate, connexion: viewAccountLogin, inscription: viewRegister,
         'nouveau-mot-de-passe': viewReset, 'mot-de-passe-oublie': viewForgot, rejoindre: viewJoin,
@@ -642,6 +643,7 @@
       <div class="card big-count"><span class="muted">Aujourd'hui</span><span class="num">${e.today}</span><span class="muted">${e.today > 1 ? 'œufs ramassés' : 'œuf ramassé'}</span></div>
       <button class="btn primary huge" type="button" data-act="egg" data-delta="1">${I.eggPlus} +1 œuf</button>
       <button class="btn" type="button" data-act="egg" data-delta="-1" ${e.today ? '' : 'disabled'}>−1 (je me suis trompé)</button>
+      <a class="btn" href="#/oeufs/calendrier">${I.calendar} Calendrier · un jour oublié ?</a>
       <div class="grid2">
         <div class="card stat"><span class="label">7 derniers jours</span><span class="value">${e.last7}</span></div>
         <div class="card stat"><span class="label">30 derniers jours</span><span class="value">${e.last30}</span></div>
@@ -668,6 +670,135 @@
     if (navigator.vibrate) navigator.vibrate(30);
     toast(delta > 0 ? `+1 œuf · ${e.today} aujourd'hui` : '1 œuf retiré', () => {
       apply(-delta);
+      enqueue('egg_undo', { clientId });
+    });
+  }
+
+  // ---------- calendrier des œufs : on touche un jour, on indique le nombre ramassé
+  const monthCache = {};
+  let calMonth = null;
+  const monthOf = (day) => day.slice(0, 7);
+  const shiftMonth = (m, n) => {
+    const [y, mo] = m.split('-').map(Number);
+    return new Date(Date.UTC(y, mo - 1 + n, 1)).toISOString().slice(0, 7);
+  };
+  const fmtMonth = (m) => new Intl.DateTimeFormat('fr-FR', { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(new Date(`${m}-15T12:00:00Z`));
+  const fmtDayLong = (day) => {
+    const opts = { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' };
+    if (day.slice(0, 4) !== S.today.slice(0, 4)) opts.year = 'numeric';
+    const t = new Intl.DateTimeFormat('fr-FR', opts).format(new Date(`${day}T12:00:00Z`));
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  };
+  const oldestMonth = () => shiftMonth(monthOf(S.today), -24);
+
+  async function loadMonth(m) {
+    monthCache[m] = { ...(monthCache[m] || { month: m, days: {}, total: 0 }), loading: true };
+    try {
+      const data = await post('egg_month', { month: m });
+      monthCache[m] = { ...data.month, fetchedAt: Date.now() };
+    } catch {
+      monthCache[m] = { ...monthCache[m], loading: false, fetchedAt: Date.now() };
+    }
+    if (route().name === 'oeufs') backgroundRender();
+  }
+
+  /** Cached month, refreshed when older than 15 s (someone else may have counted eggs). */
+  function month(m) {
+    const c = monthCache[m];
+    if (!c || (!c.loading && Date.now() - (c.fetchedAt || 0) > 15000)) loadMonth(m);
+    return monthCache[m];
+  }
+
+  function viewEggCalendar() {
+    const today = S.today;
+    calMonth = calMonth || monthOf(today);
+    const m = calMonth;
+    const c = month(m);
+    const ready = !!c.fetchedAt;
+    const [y, mo] = m.split('-').map(Number);
+    const offset = (new Date(Date.UTC(y, mo - 1, 1)).getUTCDay() + 6) % 7;
+    const count = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+    const cells = [];
+    for (let i = 0; i < offset; i++) cells.push('<span aria-hidden="true"></span>');
+    for (let d = 1; d <= count; d++) {
+      const day = `${m}-${String(d).padStart(2, '0')}`;
+      const n = c.days[day] || 0;
+      if (day > today) {
+        cells.push(`<span class="cal-day future" aria-hidden="true"><b>${d}</b></span>`);
+      } else {
+        cells.push(`<a class="cal-day ${n ? 'has' : ''} ${day === today ? 'today' : ''}" href="#/oeufs/jour/${day}"
+          aria-label="${h(fmtDayLong(day))} : ${ready ? plural(n, 'œuf', 'œufs') : 'chargement'}"><b>${d}</b><span>${ready && n ? n : ''}</span></a>`);
+      }
+    }
+    return `
+      ${back('#/oeufs', 'Les œufs')}
+      <h1>Calendrier</h1>
+      <p class="muted" style="margin:0">Touchez un jour pour indiquer les œufs ramassés ce jour-là.</p>
+      ${offlineBanner()}
+      <div class="cal-head">
+        <button class="btn" type="button" data-act="calMove" data-v="-1" aria-label="Mois précédent" ${m > oldestMonth() ? '' : 'disabled'}>‹</button>
+        <b>${h(fmtMonth(m))}</b>
+        <button class="btn" type="button" data-act="calMove" data-v="1" aria-label="Mois suivant" ${m < monthOf(today) ? '' : 'disabled'}>›</button>
+      </div>
+      <div class="cal" role="grid">
+        ${['lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.', 'dim.'].map((d) => `<span class="cal-dow">${d}</span>`).join('')}
+        ${cells.join('')}
+      </div>
+      <div class="card stat"><span class="label">Total de ${h(fmtMonth(m))}</span><span class="value">${ready ? plural(c.total, 'œuf', 'œufs') : '…'}</span></div>`;
+  }
+
+  function viewEggDay(r) {
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(r.sub || '') ? r.sub : '';
+    if (!day || day > S.today || monthOf(day) < oldestMonth()) return viewEggCalendar();
+    calMonth = monthOf(day);
+    const c = month(calMonth);
+    const n = c.fetchedAt ? (c.days[day] || 0) : null;
+    const prev = addDays(day, -1);
+    const next = addDays(day, 1);
+    return `
+      ${back('#/oeufs/calendrier', 'Calendrier')}
+      <h1>${h(fmtDayLong(day))}</h1>
+      ${offlineBanner()}
+      <div class="card big-count"><span class="muted">Œufs ramassés ce jour-là</span><span class="num">${n === null ? '…' : n}</span></div>
+      <div class="grid2">
+        <button class="btn big" type="button" data-act="eggDay" data-day="${day}" data-delta="-1" ${n ? '' : 'disabled'}>−1</button>
+        <button class="btn primary big" type="button" data-act="eggDay" data-day="${day}" data-delta="1" ${n === null ? 'disabled' : ''}>${I.eggPlus} +1</button>
+      </div>
+      <form class="card stack" data-form="eggDay" data-day="${day}">
+        <div class="field"><label for="eggn">Ou tapez le nombre d'œufs</label>
+          <input id="eggn" name="count" type="number" inputmode="numeric" min="0" max="500" required placeholder="${n ?? ''}"></div>
+        <button class="btn" type="submit">Enregistrer</button>
+      </form>
+      <div class="grid2">
+        ${prev >= `${oldestMonth()}-01` ? `<a class="btn" href="#/oeufs/jour/${prev}">‹ La veille</a>` : '<span></span>'}
+        ${next <= S.today ? `<a class="btn" href="#/oeufs/jour/${next}">Le lendemain ›</a>` : ''}
+      </div>`;
+  }
+
+  /** Sets the count of a day: right away on screen, sent when possible, with Annuler. */
+  function eggSetDay(day, count) {
+    const m = monthOf(day);
+    const c = monthCache[m] || (monthCache[m] = { month: m, days: {}, total: 0, fetchedAt: Date.now() });
+    const before = c.days[day] || 0;
+    count = Math.max(0, Math.min(500, Math.round(count)));
+    if (count === before) return;
+    const apply = (v) => {
+      const diff = v - (c.days[day] || 0);
+      if (v) c.days[day] = v; else delete c.days[day];
+      c.total += diff;
+      const e = S.eggs;
+      const ago = daysBetween(day, S.today);
+      if (ago === 0) e.today = Math.max(0, e.today + diff);
+      if (ago < 7) e.last7 = Math.max(0, e.last7 + diff);
+      if (ago < 30) e.last30 = Math.max(0, e.last30 + diff);
+      const bar = e.days.find((x) => x.day === day);
+      if (bar) bar.count = Math.max(0, bar.count + diff);
+    };
+    apply(count);
+    const clientId = enqueue('egg_set', { day, count });
+    if (navigator.vibrate) navigator.vibrate(30);
+    toast(`${fmtDayLong(day)} : ${plural(count, 'œuf', 'œufs')}`, () => {
+      apply(before);
       enqueue('egg_undo', { clientId });
     });
   }
@@ -1316,6 +1447,12 @@
       go('#/');
     },
     async accountLogout() { await call('account_logout', {}); toast('Déconnecté du compte'); go(S.auth ? '#/reglages' : '#/'); },
+    calMove(el) { calMonth = shiftMonth(calMonth || monthOf(S.today), Number(el.dataset.v)); render(); },
+    eggDay(el) {
+      const c = monthCache[monthOf(el.dataset.day)];
+      eggSetDay(el.dataset.day, (c?.days[el.dataset.day] || 0) + Number(el.dataset.delta));
+      render();
+    },
     async leaveHousehold(el) {
       if (!confirm('Ne plus suivre ce poulailler avec votre compte ? Il continue d\'exister pour la famille.')) return;
       await call('membership_leave', { householdId: Number(el.dataset.id) }); toast('C\'est fait'); render();
@@ -1399,6 +1536,13 @@
 
   // ------------------------------------------------------------------ formulaires
   const forms = {
+    eggDay(f, fd) {
+      const n = Number(fd.get('count'));
+      if (!Number.isFinite(n) || n < 0 || n > 500) return showError('Indiquez un nombre entre 0 et 500.');
+      eggSetDay(f.dataset.day, n);
+      f.reset();
+      render();
+    },
     async register(f, fd) {
       try {
         const data = await post('account_register', { email: fd.get('email'), password: fd.get('password') });

@@ -135,6 +135,67 @@ function action_egg(array $in): array
     return [];
 }
 
+/** A past day the family may still fill in: up to two years back, never in the future. */
+function egg_day(mixed $v): string
+{
+    $day = valid_day($v);
+    $today = now()->format('Y-m-d');
+    if ($day === null || $day > $today || $day < now()->modify('-730 days')->format('Y-m-d')) {
+        throw new ApiError('Choisissez un jour passé (deux ans au plus).');
+    }
+    return $day;
+}
+
+/**
+ * Calendar: « that day, we picked N eggs ». Stored as the difference with what was
+ * already counted, so the history (who, when) stays and Annuler can remove just this change.
+ */
+function action_egg_set(array $in): array
+{
+    require_auth();
+    $day = egg_day($in['day'] ?? null);
+    $count = $in['count'] ?? null;
+    if (!is_int($count) && !(is_string($count) && ctype_digit($count))) {
+        throw new ApiError('Indiquez un nombre d\'œufs.');
+    }
+    $count = (int) $count;
+    if ($count < 0 || $count > 500) {
+        throw new ApiError('Ce nombre d\'œufs semble faux.');
+    }
+    $cid = client_id($in['clientId'] ?? null);
+    if ($cid !== null) {
+        $st = db()->prepare('SELECT 1 FROM eggs WHERE client_id = ?');
+        $st->execute([$cid]);
+        if ($st->fetchColumn()) {
+            return []; // already received (sent again after being offline)
+        }
+    }
+    $st = db()->prepare('SELECT COALESCE(SUM(delta), 0) FROM eggs WHERE day = ?');
+    $st->execute([$day]);
+    $delta = $count - max(0, (int) $st->fetchColumn());
+    if ($delta !== 0) {
+        db()->prepare('INSERT INTO eggs (client_id, day, delta, person_id, created_at) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$cid, $day, $delta, me_id(), now_ts()]);
+    }
+    return [];
+}
+
+/** One month of eggs for the calendar. */
+function action_egg_month(array $in): array
+{
+    require_auth();
+    $month = is_string($in['month'] ?? null) && preg_match('/^\d{4}-(0[1-9]|1[0-2])$/', $in['month']) ? $in['month'] : now()->format('Y-m');
+    $st = db()->prepare('SELECT day, SUM(delta) AS n FROM eggs WHERE day LIKE ? GROUP BY day');
+    $st->execute([$month . '-%']);
+    $days = [];
+    foreach ($st->fetchAll() as $r) {
+        if ((int) $r['n'] > 0) {
+            $days[$r['day']] = (int) $r['n'];
+        }
+    }
+    return ['month' => ['month' => $month, 'days' => $days, 'total' => array_sum($days)]];
+}
+
 function action_egg_undo(array $in): array
 {
     require_auth();

@@ -8,6 +8,12 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 - **Marche sans réseau** au fond du jardin : les clics sont gardés sur le téléphone et envoyés dès que ça capte.
 - S'installe comme une appli (PWA) : « Ajouter à l'écran d'accueil ».
 
+## Nouveautés V2.2
+
+- **Chacun son compte** (e-mail, **Google** ou **Apple**) : on retrouve son poulailler sur n'importe quel appareil, sans code.
+- **Synchro en direct** entre les téléphones de la famille (quelques secondes).
+- **Calendrier des œufs** : on touche un jour passé et on indique les œufs ramassés.
+
 ## Nouveautés V2
 
 - **Comptes et poulaillers** : chacun peut créer son poulailler en ligne ; un compte peut en gérer plusieurs ; les familles sont totalement séparées (une base de données par poulailler).
@@ -76,6 +82,7 @@ php -S localhost:8000 -t public     # puis http://localhost:8000
 php tests/api_test.php              # parcours complets : comptes, familles, cloisonnement…
 php tests/push_test.php             # chiffrement des rappels (exemple officiel RFC 8291)
 php tests/reminders_test.php        # rappels porte/santé, passage de la V1 à la V2
+php tests/accounts_test.php         # comptes membres, Google/Apple (faux fournisseur), synchro
 ```
 
 ## Licence des polices
