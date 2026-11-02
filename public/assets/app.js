@@ -90,9 +90,76 @@
   function setOnline(v) {
     if (online === v) return;
     online = v;
-    render();
+    backgroundRender();
     if (v) flush();
   }
+
+  /*
+   * Screens are redrawn from scratch. Two safeguards so nobody loses what they typed:
+   *  - automatic redraws (refresh every minute, back from another app, sync) wait while
+   *    someone is typing in a field;
+   *  - every form keeps a draft per screen: going to another screen and back, or an error
+   *    message, gives the text back. Passwords and codes stay in memory only.
+   */
+  const FIELD = 'input:not([type=file]):not([type=button]):not([type=submit]), textarea, select';
+  let pendingRender = false;
+  const typing = () => { const a = document.activeElement; return !!(a && app.contains(a) && a.matches(FIELD)); };
+  function backgroundRender() {
+    if (typing()) { pendingRender = true; return; }
+    pendingRender = false;
+    render();
+  }
+  document.addEventListener('focusout', () => {
+    setTimeout(() => { if (pendingRender && !typing()) { pendingRender = false; render(); } }, 0);
+  });
+
+  const SECRET = (el) => el.type === 'password' || /^(pin|pin2|oldPin|newPin|password|oldPassword|newPassword)$/.test(el.name);
+  let drafts = {};
+  try { drafts = JSON.parse(sessionStorage.getItem('kk-drafts') || '{}') || {}; } catch { drafts = {}; }
+  const routeKey = () => location.hash || '#/';
+  function fieldKey(el) {
+    if (el.id) return el.id;
+    const scope = el.form || app;
+    return `${el.form?.dataset.form || ''}:${el.name}:${Array.from(scope.querySelectorAll(`[name="${CSS.escape(el.name)}"]`)).indexOf(el)}`;
+  }
+  function saveDrafts() {
+    const safe = {};
+    for (const [route, fields] of Object.entries(drafts)) {
+      const kept = Object.fromEntries(Object.entries(fields).filter(([, f]) => !f.secret));
+      if (Object.keys(kept).length) safe[route] = kept;
+    }
+    try { sessionStorage.setItem('kk-drafts', JSON.stringify(safe)); } catch { /* stockage indisponible */ }
+  }
+  function rememberField(el) {
+    if (!app.contains(el) || !el.matches(FIELD) || !(el.name || el.id)) return;
+    const route = routeKey();
+    drafts[route] = drafts[route] || {};
+    drafts[route][fieldKey(el)] = { v: el.value, secret: SECRET(el) };
+    saveDrafts();
+  }
+  function restoreDrafts() {
+    const fields = drafts[routeKey()];
+    if (!fields) return;
+    app.querySelectorAll(FIELD).forEach((el) => {
+      const d = fields[fieldKey(el)];
+      if (d && el.value !== d.v) el.value = d.v;
+    });
+  }
+  function takeFormDraft(form) {
+    const route = routeKey();
+    const taken = {};
+    form.querySelectorAll(FIELD).forEach((el) => {
+      const k = fieldKey(el);
+      if (drafts[route]?.[k]) { taken[k] = drafts[route][k]; delete drafts[route][k]; }
+    });
+    saveDrafts();
+    return { route, taken };
+  }
+  function giveFormDraftBack({ route, taken }) {
+    drafts[route] = { ...taken, ...(drafts[route] || {}) };
+    saveDrafts();
+  }
+  document.addEventListener('input', (ev) => rememberField(ev.target));
 
   async function refresh() {
     try {
@@ -104,7 +171,7 @@
       online = false;
     }
     loaded = true;
-    render();
+    backgroundRender();
   }
 
   /** Changes that must never be lost: kept on the phone until the server has them. */
@@ -138,7 +205,7 @@
       }
     }
     flushing = false;
-    render();
+    backgroundRender();
   }
 
   /** Actions that need the server right now (réglages, fiches...). */
@@ -223,6 +290,7 @@
       html = (views[r.name] || viewHome)(r);
     }
     app.innerHTML = html;
+    restoreDrafts();
     afterRender();
   }
 
@@ -1260,6 +1328,7 @@
   });
 
   document.addEventListener('change', (ev) => {
+    rememberField(ev.target);
     if (ev.target.matches('[data-photo-date]')) photoDate = ev.target.value;
     const input = ev.target.closest('[data-photo]');
     if (input?.files?.[0]) uploadPhoto(Number(input.dataset.photo), input.files[0]);
@@ -1361,7 +1430,12 @@
     const f = ev.target.closest('[data-form]');
     if (!f || !forms[f.dataset.form]) return;
     ev.preventDefault();
-    Promise.resolve(forms[f.dataset.form](f, new FormData(f))).catch(() => { /* erreur déjà affichée */ });
+    const data = new FormData(f);
+    const draft = takeFormDraft(f);
+    errorText = '';
+    Promise.resolve(forms[f.dataset.form](f, data)).catch(() => { /* erreur déjà affichée */ }).finally(() => {
+      if (errorText) { giveFormDraftBack(draft); render(); }
+    });
   });
 
   // ------------------------------------------------------------------ démarrage
