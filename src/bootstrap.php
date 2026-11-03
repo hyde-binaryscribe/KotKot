@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const KK_VERSION = '2.9.0';
+const KK_VERSION = '2.10.0';
 define('KK_ROOT', dirname(__DIR__));
 define('KK_DATA', rtrim(getenv('KOTKOT_DATA') ?: KK_ROOT . '/data', '/'));
 
@@ -156,6 +156,17 @@ function migrate_central(PDO $pdo): void
         $pdo->exec(<<<SQL
         ALTER TABLE push_subscriptions ADD COLUMN gazette_freq INTEGER NOT NULL DEFAULT 0;
         PRAGMA user_version = 3;
+        SQL);
+        $version = 3;
+    }
+    if ($version < 4) {
+        // V2.10: each phone chooses its hours for the Gazette, and how the door reminder insists
+        $pdo->exec(<<<SQL
+        ALTER TABLE push_subscriptions ADD COLUMN gazette_from INTEGER NOT NULL DEFAULT 600;
+        ALTER TABLE push_subscriptions ADD COLUMN gazette_to INTEGER NOT NULL DEFAULT 1140;
+        ALTER TABLE push_subscriptions ADD COLUMN door_repeats INTEGER NOT NULL DEFAULT 2;
+        ALTER TABLE push_subscriptions ADD COLUMN door_gap INTEGER NOT NULL DEFAULT 30;
+        PRAGMA user_version = 4;
         SQL);
     }
 }

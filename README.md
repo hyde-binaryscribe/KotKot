@@ -8,6 +8,10 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 - **Marche sans réseau** au fond du jardin : les clics sont gardés sur le téléphone et envoyés dès que ça capte.
 - S'installe comme une appli (PWA) : « Ajouter à l'écran d'accueil ».
 
+## Nouveautés V2.10
+
+- **Chacun règle ses notifications** (Réglages › Rappels) : la Gazette de jamais à 3 fois par jour, le matin, la journée, l'après-midi ou le soir ; et le nombre de relances quand la porte reste ouverte, avec leur écart.
+
 ## Nouveautés V2.9
 
 - **La Gazette en notification** : une nouvelle au hasard entre 10 h et 19 h, réglable téléphone par téléphone (jamais, quelques fois par semaine, tous les jours) dans Réglages › Rappels. Le titre est écrit par le téléphone avec les données du poulailler.

@@ -2045,16 +2045,22 @@
       html = '<p style="margin:0">Les notifications sont bloquées pour KotKot. Autorisez-les dans les réglages du téléphone (Notifications), puis revenez ici.</p>';
     } else {
       const sub = await currentPushSub().catch(() => null);
-      let gazetteFreq = 0;
+      let pr = { gazette: 0, window: 'journee', doorRepeats: 2, doorGap: 30 };
       if (sub) {
-        try { gazetteFreq = (await post('push_status', { endpoint: sub.endpoint })).push.gazette || 0; } catch { /* hors ligne */ }
+        try { pr = { ...pr, ...(await post('push_status', { endpoint: sub.endpoint })).push }; } catch { /* hors ligne */ }
       }
+      const seg = (k, options, wrap = false) => `<div class="seg ${wrap ? 'wrap' : ''}">${options.map(([v, l]) => `<button type="button" data-act="pushPref" data-k="${k}" data-v="${v}" aria-pressed="${String(pr[k]) === String(v)}">${l}</button>`).join('')}</div>`;
       html = sub
         ? `<p class="hint" style="margin:0">${I.check}<span><b>Activés sur ce téléphone.</b></span></p>
            <div class="grid2"><button class="btn" type="button" data-act="pushTest">Essayer</button><button class="btn" type="button" data-act="pushOff">Désactiver</button></div>
+           <span class="lab">Porte restée ouverte : combien de relances ?</span>
+           ${seg('doorRepeats', [[0, 'Aucune'], [1, '1'], [2, '2'], [3, '3']])}
+           ${pr.doorRepeats ? `<span class="lab">Écart entre les relances</span>${seg('doorGap', [[15, '15 min'], [30, '30 min'], [60, '1 h']])}` : ''}
            <span class="lab" id="gazette-push">${I.news} Nouvelles de la Gazette</span>
-           <div class="seg">${[[0, 'Jamais'], [3, 'Quelques fois par semaine'], [7, 'Tous les jours']].map(([v, l]) => `<button type="button" data-act="gazettePush" data-v="${v}" aria-pressed="${gazetteFreq === v}">${l}</button>`).join('')}</div>
-           <span class="muted">Une nouvelle de la Gazette, au hasard, entre 10 h et 19 h.</span>`
+           ${seg('gazette', [[0, 'Jamais'], [1, '1 fois par semaine'], [3, 'Quelques fois par semaine'], [7, '1 par jour'], [14, '2 par jour'], [21, '3 par jour']], true)}
+           ${pr.gazette ? `<span class="lab">À quelle heure ?</span>
+           ${seg('window', [['matin', 'Matin · 8 h – 12 h'], ['journee', 'Journée · 10 h – 19 h'], ['apresmidi', 'Après-midi · 13 h – 19 h'], ['soir', 'Soir · 17 h – 21 h']], true)}
+           <span class="muted">Au hasard dans ce créneau. Seulement sur ce téléphone.</span>` : ''}`
         : `<button class="btn primary" type="button" data-act="pushOn">${I.bell} Activer les rappels</button>`;
     }
     if (box.isConnected) box.innerHTML = html;
@@ -2274,12 +2280,13 @@
       go(`#/poule/${hen.id}`);
     },
     pushOn: () => pushOn(),
-    async gazettePush(el) {
+    async pushPref(el) {
       const sub = await currentPushSub();
       if (!sub) return;
-      const v = Number(el.dataset.v);
-      await call('push_prefs', { endpoint: sub.endpoint, gazette: v });
-      toast(v ? (v === 7 ? 'Une nouvelle de la Gazette chaque jour' : 'Des nouvelles de la Gazette quelques fois par semaine') : 'Plus de nouvelles de la Gazette en notification');
+      const k = el.dataset.k;
+      const v = k === 'window' ? el.dataset.v : Number(el.dataset.v);
+      await call('push_prefs', { endpoint: sub.endpoint, [k]: v });
+      toast('Réglage enregistré pour ce téléphone');
       render();
     },
     pushOff: () => pushOff(),

@@ -227,43 +227,91 @@ function action_push_unsubscribe(array $in): array
     return [];
 }
 
+/** Gazette rhythm = news per week: 0 never, 1 once a week, 3 a few times, 7 daily, 14 twice a day, 21 three times. */
+const GAZETTE_FREQS = [0, 1, 3, 7, 14, 21];
+/** Time windows for the Gazette, in minutes after midnight. */
+const GAZETTE_WINDOWS = ['matin' => [480, 720], 'journee' => [600, 1140], 'apresmidi' => [780, 1140], 'soir' => [1020, 1260]];
+
+function push_prefs_of(array $sub): array
+{
+    $window = array_search([(int) $sub['gazette_from'], (int) $sub['gazette_to']], GAZETTE_WINDOWS, true) ?: 'journee';
+    return [
+        'subscribed' => true,
+        'gazette' => (int) $sub['gazette_freq'],
+        'window' => $window,
+        'doorRepeats' => (int) $sub['door_repeats'],
+        'doorGap' => (int) $sub['door_gap'],
+    ];
+}
+
+function current_subscription(array $in): array
+{
+    $st = central()->prepare('SELECT * FROM push_subscriptions WHERE endpoint = ? AND household_id = ?');
+    $st->execute([(string) ($in['endpoint'] ?? ''), household_id()]);
+    $sub = $st->fetch();
+    if (!$sub) {
+        throw new ApiError('Activez d\'abord les rappels sur ce téléphone.', 404);
+    }
+    return $sub;
+}
+
+/** Only what is sent changes: { gazette, window, doorRepeats, doorGap }. */
 function action_push_prefs(array $in): array
 {
     require_auth();
-    $freq = (int) ($in['gazette'] ?? 0);
-    $freq = in_array($freq, [0, 3, 7], true) ? $freq : 0;
-    $st = central()->prepare('UPDATE push_subscriptions SET gazette_freq = ? WHERE endpoint = ? AND household_id = ?');
-    $st->execute([$freq, (string) ($in['endpoint'] ?? ''), household_id()]);
-    if ($st->rowCount() === 0) {
-        throw new ApiError('Activez d\'abord les rappels sur ce téléphone.', 404);
+    $sub = current_subscription($in);
+    if (array_key_exists('gazette', $in)) {
+        $sub['gazette_freq'] = in_array((int) $in['gazette'], GAZETTE_FREQS, true) ? (int) $in['gazette'] : 0;
     }
-    return ['push' => ['gazette' => $freq]];
+    if (isset($in['window'], GAZETTE_WINDOWS[$in['window']])) {
+        [$sub['gazette_from'], $sub['gazette_to']] = GAZETTE_WINDOWS[$in['window']];
+    }
+    if (array_key_exists('doorRepeats', $in)) {
+        $sub['door_repeats'] = max(0, min(3, (int) $in['doorRepeats']));
+    }
+    if (array_key_exists('doorGap', $in)) {
+        $sub['door_gap'] = in_array((int) $in['doorGap'], [15, 30, 60], true) ? (int) $in['doorGap'] : 30;
+    }
+    central()->prepare('UPDATE push_subscriptions SET gazette_freq = ?, gazette_from = ?, gazette_to = ?, door_repeats = ?, door_gap = ? WHERE id = ?')
+        ->execute([$sub['gazette_freq'], $sub['gazette_from'], $sub['gazette_to'], $sub['door_repeats'], $sub['door_gap'], $sub['id']]);
+    return ['push' => push_prefs_of($sub)];
 }
 
 function action_push_status(array $in): array
 {
     require_auth();
-    $st = central()->prepare('SELECT gazette_freq FROM push_subscriptions WHERE endpoint = ? AND household_id = ?');
+    $st = central()->prepare('SELECT * FROM push_subscriptions WHERE endpoint = ? AND household_id = ?');
     $st->execute([(string) ($in['endpoint'] ?? ''), household_id()]);
-    $freq = $st->fetchColumn();
-    return ['push' => ['subscribed' => $freq !== false, 'gazette' => (int) $freq]];
+    $sub = $st->fetch();
+    return ['push' => $sub ? push_prefs_of($sub) : ['subscribed' => false]];
 }
 
 /**
- * The moment of the day this phone gets its Gazette news: random but fixed for the day
- * (between 10 am and 7 pm), and on « a few times a week », only on about 3 days out of 7.
- * Returns minutes after midnight, or null for no news that day.
+ * The moments of a day this phone gets Gazette news (minutes after midnight), random
+ * but fixed for the day, inside its window. Once a week: one day drawn per week;
+ * a few times: about 3 days out of 7; 2 or 3 a day: one in each part of the window.
  */
-function gazette_slot(int $subscriptionId, string $day, int $freq): ?int
+function gazette_slots(int $subscriptionId, string $day, int $freq, int $from = 600, int $to = 1140): array
 {
-    if ($freq <= 0) {
-        return null;
+    if ($freq <= 0 || $to <= $from) {
+        return [];
     }
-    $h = crc32("gazette|$subscriptionId|$day");
-    if ($freq < 7 && $h % 7 >= $freq) {
-        return null;
+    $ts = strtotime($day . ' 12:00:00 UTC');
+    if ($freq === 1) {
+        $week = gmdate('o-W', $ts);
+        if (crc32("gazette-week|$subscriptionId|$week") % 7 + 1 !== (int) gmdate('N', $ts)) {
+            return [];
+        }
+    } elseif ($freq < 7 && crc32("gazette|$subscriptionId|$day") % 7 >= $freq) {
+        return [];
     }
-    return 600 + intdiv($h, 7) % 540;
+    $count = max(1, intdiv($freq, 7));
+    $span = intdiv($to - $from, $count);
+    $slots = [];
+    for ($i = 0; $i < $count; $i++) {
+        $slots[] = $from + $i * $span + crc32("gazette|$subscriptionId|$day|$i") % max(1, $span);
+    }
+    return $slots;
 }
 
 function action_push_test(array $in): array
@@ -313,18 +361,31 @@ function run_reminders(): array
         'reminderDelay' => (int) setting('reminder_delay', '30'),
     ];
 
-    // Door still open after sunset: at the reminder time, then twice more, every 30 minutes.
+    // Door still open after sunset: at the reminder time, then as many times as each phone
+    // asked for (0 to 3 more), spaced as it asked (15, 30 or 60 minutes).
     $door = door_state($now, $settings);
     if ($door['shouldClose']) {
-        $round = min(2, intdiv($now->getTimestamp() - $door['remindAt'], 1800));
-        $key = 'door-' . $now->format('Y-m-d') . '-' . $round;
-        if (mark_notified($key)) {
-            push_household([
+        $late = $now->getTimestamp() - $door['remindAt'];
+        $subs = central()->prepare('SELECT * FROM push_subscriptions WHERE household_id = ?');
+        $subs->execute([household_id()]);
+        foreach ($subs->fetchAll() as $sub) {
+            $round = intdiv($late, 60 * max(15, (int) $sub['door_gap']));
+            if ($round > (int) $sub['door_repeats']) {
+                continue;
+            }
+            $key = 'door-' . $now->format('Y-m-d') . '-' . $sub['id'] . '-' . $round;
+            if (!mark_notified($key)) {
+                continue;
+            }
+            $status = push_send($sub, [
                 'title' => $round ? 'La porte est toujours ouverte !' : 'Pensez à fermer la porte',
                 'body' => 'Le soleil s\'est couché à ' . hhmm($door['sunset']) . '. Touchez ici quand c\'est fermé.',
                 'url' => './#/porte',
                 'tag' => 'kotkot-door',
-            ], null, 1800);
+            ], 1800);
+            if (in_array($status, [404, 410], true)) {
+                central()->prepare('DELETE FROM push_subscriptions WHERE id = ?')->execute([$sub['id']]);
+            }
             $sent[] = $key;
         }
     }
@@ -352,11 +413,13 @@ function run_reminders(): array
     $subs = central()->prepare('SELECT * FROM push_subscriptions WHERE household_id = ? AND gazette_freq > 0');
     $subs->execute([household_id()]);
     foreach ($subs->fetchAll() as $sub) {
-        $slot = gazette_slot((int) $sub['id'], $now->format('Y-m-d'), (int) $sub['gazette_freq']);
-        if ($slot === null || $minute < $slot || $minute > 19 * 60 + 30) {
+        $slots = gazette_slots((int) $sub['id'], $now->format('Y-m-d'), (int) $sub['gazette_freq'], (int) $sub['gazette_from'], (int) $sub['gazette_to']);
+        // the latest moment already reached (never a burst of late ones), and not long after the window
+        $due = array_keys(array_filter($slots, fn ($m) => $minute >= $m));
+        if (!$due || $minute > (int) $sub['gazette_to'] + 30) {
             continue;
         }
-        $key = 'gazette-' . $sub['id'] . '-' . $now->format('Y-m-d');
+        $key = 'gazette-' . $sub['id'] . '-' . $now->format('Y-m-d') . '-' . max($due);
         if (!mark_notified($key)) {
             continue;
         }

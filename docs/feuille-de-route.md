@@ -45,6 +45,9 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 ## V2.9 — fait
 - [x] **Notifications aléatoires de la Gazette** (désactivées par défaut, réglables par téléphone)
 
+## V2.10 — fait
+- [x] Notifications réglables téléphone par téléphone : Gazette (jamais, 1 par semaine, quelques fois, 1, 2 ou 3 par jour) et son créneau (matin, journée, après-midi, soir) ; relances de la porte (aucune à 3, toutes les 15, 30 ou 60 min)
+
 ## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité

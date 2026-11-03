@@ -1,14 +1,14 @@
 /* KotKot service worker: the app opens even without network, and shows reminders. */
-const CACHE = 'kotkot-2.9.0';
+const CACHE = 'kotkot-2.10.0';
 // The Gazette's writer, to compose a real headline when a « Gazette » notification arrives.
 self.window = self;
-try { importScripts('assets/gazette.js?v=2.9.0'); } catch { /* the notification will use its plain text */ }
+try { importScripts('assets/gazette.js?v=2.10.0'); } catch { /* the notification will use its plain text */ }
 const SHELL = [
   './',
-  'assets/app.css?v=2.9.0',
-  'assets/breeds.js?v=2.9.0',
-  'assets/gazette.js?v=2.9.0',
-  'assets/app.js?v=2.9.0',
+  'assets/app.css?v=2.10.0',
+  'assets/breeds.js?v=2.10.0',
+  'assets/gazette.js?v=2.10.0',
+  'assets/app.js?v=2.10.0',
   'assets/icon.svg',
   'assets/icon-192.png',
   'assets/icon-512.png',
