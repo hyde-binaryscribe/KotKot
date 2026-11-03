@@ -383,6 +383,12 @@ $ec = openssl_pkey_get_details($ua)['ec'];
 $b64u = fn ($b) => rtrim(strtr(base64_encode($b), '+/', '-_'), '=');
 [$s] = req('voisin', 'push_subscribe', ['endpoint' => 'https://fcm.googleapis.com/fcm/send/test-1', 'keys' => ['p256dh' => $b64u("\x04" . $ec['x'] . $ec['y']), 'auth' => $b64u(random_bytes(16))]]);
 check('push: a phone can subscribe', $s === 200);
+[, $r] = req('voisin', 'push_status', ['endpoint' => 'https://fcm.googleapis.com/fcm/send/test-1']);
+check('Gazette notifications are off by default', $r['push'] === ['subscribed' => true, 'gazette' => 0]);
+[$s, $r] = req('voisin', 'push_prefs', ['endpoint' => 'https://fcm.googleapis.com/fcm/send/test-1', 'gazette' => 3]);
+check('…and can be set to « a few times a week »', $s === 200 && $r['push']['gazette'] === 3);
+[$s] = req('voisin', 'push_prefs', ['endpoint' => 'https://fcm.googleapis.com/fcm/send/autre', 'gazette' => 7]);
+check('…only for a subscribed phone', $s === 404);
 [$s, $r] = req('voisin', 'state');
 check('the app gets the public push key', strlen($r['state']['push']['publicKey']) === 87);
 

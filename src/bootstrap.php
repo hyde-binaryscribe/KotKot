@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const KK_VERSION = '2.8.0';
+const KK_VERSION = '2.9.0';
 define('KK_ROOT', dirname(__DIR__));
 define('KK_DATA', rtrim(getenv('KOTKOT_DATA') ?: KK_ROOT . '/data', '/'));
 
@@ -148,6 +148,14 @@ function migrate_central(PDO $pdo): void
             created_at INTEGER NOT NULL
         );
         PRAGMA user_version = 2;
+        SQL);
+        $version = 2;
+    }
+    if ($version < 3) {
+        // V2.9: random « Gazette » notifications, chosen phone by phone (0 never, 3 a few times a week, 7 daily)
+        $pdo->exec(<<<SQL
+        ALTER TABLE push_subscriptions ADD COLUMN gazette_freq INTEGER NOT NULL DEFAULT 0;
+        PRAGMA user_version = 3;
         SQL);
     }
 }

@@ -227,6 +227,45 @@ function action_push_unsubscribe(array $in): array
     return [];
 }
 
+function action_push_prefs(array $in): array
+{
+    require_auth();
+    $freq = (int) ($in['gazette'] ?? 0);
+    $freq = in_array($freq, [0, 3, 7], true) ? $freq : 0;
+    $st = central()->prepare('UPDATE push_subscriptions SET gazette_freq = ? WHERE endpoint = ? AND household_id = ?');
+    $st->execute([$freq, (string) ($in['endpoint'] ?? ''), household_id()]);
+    if ($st->rowCount() === 0) {
+        throw new ApiError('Activez d\'abord les rappels sur ce téléphone.', 404);
+    }
+    return ['push' => ['gazette' => $freq]];
+}
+
+function action_push_status(array $in): array
+{
+    require_auth();
+    $st = central()->prepare('SELECT gazette_freq FROM push_subscriptions WHERE endpoint = ? AND household_id = ?');
+    $st->execute([(string) ($in['endpoint'] ?? ''), household_id()]);
+    $freq = $st->fetchColumn();
+    return ['push' => ['subscribed' => $freq !== false, 'gazette' => (int) $freq]];
+}
+
+/**
+ * The moment of the day this phone gets its Gazette news: random but fixed for the day
+ * (between 10 am and 7 pm), and on « a few times a week », only on about 3 days out of 7.
+ * Returns minutes after midnight, or null for no news that day.
+ */
+function gazette_slot(int $subscriptionId, string $day, int $freq): ?int
+{
+    if ($freq <= 0) {
+        return null;
+    }
+    $h = crc32("gazette|$subscriptionId|$day");
+    if ($freq < 7 && $h % 7 >= $freq) {
+        return null;
+    }
+    return 600 + intdiv($h, 7) % 540;
+}
+
 function action_push_test(array $in): array
 {
     require_auth();
@@ -306,6 +345,33 @@ function run_reminders(): array
                 $sent[] = $key;
             }
         }
+    }
+
+    // The Gazette: each phone that asked for it, at its random moment of the day.
+    $minute = (int) $now->format('G') * 60 + (int) $now->format('i');
+    $subs = central()->prepare('SELECT * FROM push_subscriptions WHERE household_id = ? AND gazette_freq > 0');
+    $subs->execute([household_id()]);
+    foreach ($subs->fetchAll() as $sub) {
+        $slot = gazette_slot((int) $sub['id'], $now->format('Y-m-d'), (int) $sub['gazette_freq']);
+        if ($slot === null || $minute < $slot || $minute > 19 * 60 + 30) {
+            continue;
+        }
+        $key = 'gazette-' . $sub['id'] . '-' . $now->format('Y-m-d');
+        if (!mark_notified($key)) {
+            continue;
+        }
+        // the phone writes the headline itself (same generator as the app); this text is the fallback
+        $status = push_send($sub, [
+            'type' => 'gazette',
+            'title' => 'La Gazette du poulailler',
+            'body' => 'Du nouveau au poulailler ! Touchez pour lire.',
+            'url' => './#/gazette',
+            'tag' => 'kotkot-gazette',
+        ], 4 * 3600);
+        if (in_array($status, [404, 410], true)) {
+            central()->prepare('DELETE FROM push_subscriptions WHERE id = ?')->execute([$sub['id']]);
+        }
+        $sent[] = $key;
     }
     return $sent;
 }

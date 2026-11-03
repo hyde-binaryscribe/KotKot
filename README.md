@@ -8,6 +8,10 @@ L'application du poulailler familial : **œufs, tâches, poules et porte**, sur 
 - **Marche sans réseau** au fond du jardin : les clics sont gardés sur le téléphone et envoyés dès que ça capte.
 - S'installe comme une appli (PWA) : « Ajouter à l'écran d'accueil ».
 
+## Nouveautés V2.9
+
+- **La Gazette en notification** : une nouvelle au hasard entre 10 h et 19 h, réglable téléphone par téléphone (jamais, quelques fois par semaine, tous les jours) dans Réglages › Rappels. Le titre est écrit par le téléphone avec les données du poulailler.
+
 ## Nouveautés V2.7
 
 - **« À la une »** : à chaque ouverture de l'appli, une nouvelle de la Gazette en haut de l'accueil, jamais la même.
@@ -103,6 +107,7 @@ php tests/api_test.php              # parcours complets : comptes, familles, clo
 php tests/push_test.php             # chiffrement des rappels (exemple officiel RFC 8291)
 php tests/reminders_test.php        # rappels porte/santé, passage de la V1 à la V2
 php tests/accounts_test.php         # comptes membres, Google/Apple (faux fournisseur), synchro
+node tests/sw_test.js .             # notifications de la Gazette écrites par le téléphone
 ```
 
 ## Licence des polices

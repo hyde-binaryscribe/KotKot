@@ -42,6 +42,9 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 - [x] Tâches : 2 fois par jour, 1 jour sur 2, tous les N jours, toutes les 2 semaines, chaque mois ; tâches modifiables
 - [x] Ponte : « Pond / Ne pond pas encore / Je ne sais pas » ; premier œuf fêté dans la Gazette
 
+## V2.9 — fait
+- [x] **Notifications aléatoires de la Gazette** (désactivées par défaut, réglables par téléphone)
+
 ## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité

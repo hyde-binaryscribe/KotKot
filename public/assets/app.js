@@ -1119,7 +1119,8 @@
             ${!gazetteEdits[st.id] && st.id !== 'chiffre' ? `<button class="btn" type="button" data-act="gazetteNext" data-id="${h(st.id)}">Autre version</button>` : '<span></span>'}
             <button class="btn" type="button" data-act="gazetteEdit" data-id="${h(st.id)}">Modifier</button>
           </div>`}
-        </article>`).join('')}`;
+        </article>`).join('')}
+      ${gazette ? `<a class="btn" href="#/reglages" data-scroll="gazette-push">${I.bell} Recevoir la Gazette en notification</a>` : ''}`;
   }
 
   /** The story as a 1080 × 1350 picture (the size social networks like). */
@@ -2044,9 +2045,16 @@
       html = '<p style="margin:0">Les notifications sont bloquées pour KotKot. Autorisez-les dans les réglages du téléphone (Notifications), puis revenez ici.</p>';
     } else {
       const sub = await currentPushSub().catch(() => null);
+      let gazetteFreq = 0;
+      if (sub) {
+        try { gazetteFreq = (await post('push_status', { endpoint: sub.endpoint })).push.gazette || 0; } catch { /* hors ligne */ }
+      }
       html = sub
         ? `<p class="hint" style="margin:0">${I.check}<span><b>Activés sur ce téléphone.</b></span></p>
-           <div class="grid2"><button class="btn" type="button" data-act="pushTest">Essayer</button><button class="btn" type="button" data-act="pushOff">Désactiver</button></div>`
+           <div class="grid2"><button class="btn" type="button" data-act="pushTest">Essayer</button><button class="btn" type="button" data-act="pushOff">Désactiver</button></div>
+           <span class="lab" id="gazette-push">${I.news} Nouvelles de la Gazette</span>
+           <div class="seg">${[[0, 'Jamais'], [3, 'Quelques fois par semaine'], [7, 'Tous les jours']].map(([v, l]) => `<button type="button" data-act="gazettePush" data-v="${v}" aria-pressed="${gazetteFreq === v}">${l}</button>`).join('')}</div>
+           <span class="muted">Une nouvelle de la Gazette, au hasard, entre 10 h et 19 h.</span>`
         : `<button class="btn primary" type="button" data-act="pushOn">${I.bell} Activer les rappels</button>`;
     }
     if (box.isConnected) box.innerHTML = html;
@@ -2266,6 +2274,14 @@
       go(`#/poule/${hen.id}`);
     },
     pushOn: () => pushOn(),
+    async gazettePush(el) {
+      const sub = await currentPushSub();
+      if (!sub) return;
+      const v = Number(el.dataset.v);
+      await call('push_prefs', { endpoint: sub.endpoint, gazette: v });
+      toast(v ? (v === 7 ? 'Une nouvelle de la Gazette chaque jour' : 'Des nouvelles de la Gazette quelques fois par semaine') : 'Plus de nouvelles de la Gazette en notification');
+      render();
+    },
     pushOff: () => pushOff(),
     async pushTest() {
       const sub = await currentPushSub();

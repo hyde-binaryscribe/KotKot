@@ -107,5 +107,29 @@ check('the next day: no repeat', run_all_reminders() === []);
 putenv('KOTKOT_NOW=2026-11-06 09:05:00 Europe/Paris');
 check('3 days late: a new reminder', (run_all_reminders()[1] ?? []) === ['health-1-1']);
 
+echo "Gazette en notification\n";
+use_household(1);
+$subId = (int) central()->query("SELECT id FROM push_subscriptions WHERE endpoint LIKE '%/lea'")->fetchColumn();
+central()->prepare('UPDATE push_subscriptions SET gazette_freq = 7 WHERE id = ?')->execute([$subId]);
+$day = '2026-11-07';
+$slot = gazette_slot($subId, $day, 7);
+check('every day: a moment between 10 h and 19 h', $slot >= 600 && $slot < 1140);
+$at = fn (int $minute) => sprintf('%s %02d:%02d:00 Europe/Paris', $day, intdiv($minute, 60), $minute % 60);
+putenv('KOTKOT_NOW=' . $at($slot - 5));
+$sent = [];
+$report = run_all_reminders();
+check('not before its moment', !in_array("gazette-$subId-$day", $report[1] ?? [], true));
+putenv('KOTKOT_NOW=' . $at($slot + 2));
+$report = run_all_reminders();
+check('at its moment: one Gazette notification', in_array("gazette-$subId-$day", $report[1] ?? [], true) && count($sent) === 1);
+putenv('KOTKOT_NOW=' . $at($slot + 40));
+check('only once that day', !in_array("gazette-$subId-$day", run_all_reminders()[1] ?? [], true));
+$days = 0;
+for ($i = 0; $i < 70; $i++) {
+    $days += gazette_slot($subId, date('Y-m-d', strtotime("2026-01-01 +$i days")), 3) !== null ? 1 : 0;
+}
+check("« a few times a week »: $days days out of 70 (about 30)", $days >= 18 && $days <= 42);
+check('« never »: nothing', gazette_slot($subId, $day, 0) === null);
+
 echo $failures ? "\n$failures échec(s)\n" : "\nTout est bon.\n";
 exit($failures ? 1 : 0);

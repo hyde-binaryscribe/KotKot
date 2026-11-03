@@ -137,6 +137,8 @@ $routes = [
     'push_subscribe' => 'action_push_subscribe',
     'push_unsubscribe' => 'action_push_unsubscribe',
     'push_test' => 'action_push_test',
+    'push_prefs' => 'action_push_prefs',
+    'push_status' => 'action_push_status',
 ];
 
 try {
@@ -161,7 +163,7 @@ try {
     }
     $result = $routes[$action]($input);
     // Something changed in a household: the other phones will see it at their next check.
-    $readOnly = ['join_lookup', 'hen_notes', 'hen_photos', 'egg_month', 'gazette', 'push_test', 'push_subscribe', 'push_unsubscribe',
+    $readOnly = ['join_lookup', 'hen_notes', 'hen_photos', 'egg_month', 'gazette', 'push_test', 'push_subscribe', 'push_unsubscribe', 'push_prefs', 'push_status',
         'account_login', 'account_logout', 'account_register', 'password_forgot', 'password_reset', 'password_change', 'logout'];
     if (is_int($GLOBALS['kk_household']) && !in_array($action, $readOnly, true)) {
         central()->prepare('UPDATE households SET rev = rev + 1 WHERE id = ?')->execute([$GLOBALS['kk_household']]);
