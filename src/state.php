@@ -245,38 +245,90 @@ function door_state(DateTimeImmutable $now, array $settings): array
     ];
 }
 
+/**
+ * Task rhythms:
+ *  daily   — every day;               twice — morning and evening (two ticks a day);
+ *  days    — every N days, counted from the last time it was done (1 day out of 2, every 2 weeks…);
+ *  weekly  — one day of the week;     monthly — one day of the month.
+ */
 function tasks_state(DateTimeImmutable $now): array
 {
     $today = $now->format('Y-m-d');
-    $week = week_key($now);
     $weekday = (int) $now->format('N');
-    $rows = db()->query('SELECT id, label, frequency, weekday FROM tasks WHERE active = 1 ORDER BY sort, id')->fetchAll();
+    $monthday = (int) $now->format('j');
+    $rows = db()->query('SELECT id, label, frequency, weekday, interval_days, monthday FROM tasks WHERE active = 1 ORDER BY sort, id')->fetchAll();
     $st = db()->prepare('SELECT d.done_at, p.name FROM task_done d LEFT JOIN people p ON p.id = d.person_id
         WHERE d.task_id = ? AND d.period = ?');
+    $last = db()->prepare("SELECT MAX(period) FROM task_done WHERE task_id = ? AND period GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]'");
+    $doneIn = function (int $id, string $period) use ($st): ?array {
+        $st->execute([$id, $period]);
+        $d = $st->fetch();
+        return $d ? ['by' => $d['name'], 'at' => (int) $d['done_at']] : null;
+    };
     $out = [];
     foreach ($rows as $r) {
-        $daily = $r['frequency'] === 'daily';
-        $st->execute([(int) $r['id'], $daily ? $today : $week]);
-        $done = $st->fetch();
-        $wd = $r['weekday'] !== null ? (int) $r['weekday'] : null;
-        $out[] = [
-            'id' => (int) $r['id'],
+        $id = (int) $r['id'];
+        $freq = $r['frequency'];
+        $task = [
+            'id' => $id,
             'label' => $r['label'],
-            'frequency' => $r['frequency'],
-            'weekday' => $wd,
-            'done' => (bool) $done,
-            'doneBy' => $done['name'] ?? null,
-            'doneAt' => $done ? (int) $done['done_at'] : null,
-            'dueToday' => $daily || $wd === null || $wd <= $weekday,
-            'lateDays' => (!$daily && !$done && $wd !== null && $weekday > $wd) ? $weekday - $wd : 0,
+            'frequency' => $freq,
+            'weekday' => $r['weekday'] !== null ? (int) $r['weekday'] : null,
+            'interval' => $r['interval_days'] !== null ? (int) $r['interval_days'] : null,
+            'monthday' => $r['monthday'] !== null ? (int) $r['monthday'] : null,
+            'slots' => null,
+            'nextDay' => null,
+            'lateDays' => 0,
         ];
+        $done = null;
+        $due = true;
+        if ($freq === 'twice') {
+            $slots = [];
+            foreach ([1 => 'Matin', 2 => 'Soir'] as $slot => $label) {
+                $d = $doneIn($id, "$today#$slot");
+                $slots[] = ['slot' => $slot, 'label' => $label, 'done' => $d !== null, 'doneBy' => $d['by'] ?? null, 'doneAt' => $d['at'] ?? null];
+            }
+            $task['slots'] = $slots;
+            $done = $slots[0]['done'] && $slots[1]['done'] ? ['by' => $slots[1]['doneBy'], 'at' => $slots[1]['doneAt']] : null;
+        } elseif ($freq === 'days') {
+            $n = max(2, (int) $task['interval']);
+            $done = $doneIn($id, $today);
+            $last->execute([$id]);
+            $lastDay = $last->fetchColumn() ?: null;
+            if ($done === null && $lastDay !== null) {
+                $since = (int) (new DateTimeImmutable($lastDay))->diff(new DateTimeImmutable($today))->days;
+                $due = $since >= $n;
+                $task['lateDays'] = max(0, $since - $n);
+                $task['nextDay'] = (new DateTimeImmutable($lastDay))->modify("+$n days")->format('Y-m-d');
+            }
+            if ($done !== null) {
+                $task['nextDay'] = (new DateTimeImmutable($today))->modify("+$n days")->format('Y-m-d');
+            }
+        } elseif ($freq === 'weekly') {
+            $wd = $task['weekday'] ?? 6;
+            $done = $doneIn($id, week_key($now));
+            $due = $done !== null || $wd <= $weekday;
+            $task['lateDays'] = $done === null && $weekday > $wd ? $weekday - $wd : 0;
+        } elseif ($freq === 'monthly') {
+            $md = $task['monthday'] ?? 1;
+            $done = $doneIn($id, $now->format('Y-m'));
+            $due = $done !== null || $monthday >= $md;
+            $task['lateDays'] = $done === null && $monthday > $md ? $monthday - $md : 0;
+        } else {
+            $done = $doneIn($id, $today);
+        }
+        $task['done'] = $done !== null;
+        $task['doneBy'] = $done['by'] ?? null;
+        $task['doneAt'] = $done['at'] ?? null;
+        $task['dueToday'] = $due;
+        $out[] = $task;
     }
     return $out;
 }
 
 function hens_list(): array
 {
-    $rows = db()->query("SELECT id, name, species, breed, arrived, arrived_on, born_on, mark, egg_color, status, photo,
+    $rows = db()->query("SELECT id, name, species, breed, arrived, arrived_on, born_on, mark, egg_color, status, photo, lays, laying_since,
             profile_photo, crop_photo, crop, avatar_rev
         FROM hens WHERE active = 1 ORDER BY name COLLATE NOCASE")->fetchAll();
     return array_map(fn ($r) => [
@@ -286,6 +338,8 @@ function hens_list(): array
         'breed' => $r['breed'],
         'arrived' => $r['arrived'],
         'arrivedOn' => $r['arrived_on'],
+        'lays' => $r['lays'],
+        'layingSince' => $r['laying_since'],
         'bornOn' => $r['born_on'],
         'mark' => $r['mark'],
         'eggColor' => $r['egg_color'],

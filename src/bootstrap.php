@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const KK_VERSION = '2.7.0';
+const KK_VERSION = '2.8.0';
 define('KK_ROOT', dirname(__DIR__));
 define('KK_DATA', rtrim(getenv('KOTKOT_DATA') ?: KK_ROOT . '/data', '/'));
 
@@ -393,6 +393,33 @@ function migrate_household(PDO $pdo): void
         ALTER TABLE hens ADD COLUMN avatar_rev INTEGER NOT NULL DEFAULT 0;
         PRAGMA user_version = 5;
         SQL);
+        $version = 5;
+    }
+    if ($version < 6) {
+        // V2.8: more task rhythms (twice a day, every N days, monthly) — the old table only
+        // allowed daily/weekly, so it is rebuilt — and whether each animal lays yet.
+        $pdo->exec('PRAGMA foreign_keys = OFF');
+        $pdo->exec(<<<SQL
+        BEGIN;
+        CREATE TABLE tasks_new (
+            id INTEGER PRIMARY KEY,
+            label TEXT NOT NULL,
+            frequency TEXT NOT NULL,
+            weekday INTEGER,
+            interval_days INTEGER,
+            monthday INTEGER,
+            active INTEGER NOT NULL DEFAULT 1,
+            sort INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO tasks_new (id, label, frequency, weekday, active, sort) SELECT id, label, frequency, weekday, active, sort FROM tasks;
+        DROP TABLE tasks;
+        ALTER TABLE tasks_new RENAME TO tasks;
+        ALTER TABLE hens ADD COLUMN lays TEXT NOT NULL DEFAULT 'inconnu';
+        ALTER TABLE hens ADD COLUMN laying_since TEXT;
+        PRAGMA user_version = 6;
+        COMMIT;
+        SQL);
+        $pdo->exec('PRAGMA foreign_keys = ON');
     }
 }
 

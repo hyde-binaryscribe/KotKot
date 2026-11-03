@@ -321,6 +321,21 @@ details summary::-webkit-details-marker { display: none; }
 .une-actions { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
 .une-actions .btn { min-height: 3rem; font-size: 1rem; padding: .3rem .6rem; }
 
+/* tâches matin et soir, porte, ponte */
+.task.twice { flex-direction: column; align-items: stretch; gap: .6rem; }
+.slots { display: grid; grid-template-columns: 1fr 1fr; gap: .6rem; }
+.slot { display: flex; align-items: center; gap: .6rem; min-height: 3.6rem; padding: .5rem .7rem; border-radius: 1rem; border: 2px solid var(--ink); background: #fff; text-align: left; }
+.slot .box { width: 2rem; height: 2rem; flex-shrink: 0; border-radius: .6rem; border: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; }
+.slot.on { background: var(--green-soft); border-color: var(--green); }
+.slot.on .box { background: var(--green); border-color: var(--green); color: #fff; }
+.slot .box svg { width: 1.3rem; height: 1.3rem; }
+.slot .sub { display: block; font-size: .85rem; color: var(--ink-soft); }
+.forgot-sum { cursor: pointer; font-weight: 700; min-height: 2.8rem; display: flex; align-items: center; gap: .5rem; }
+.forgot-sum svg { width: 1.3rem; height: 1.3rem; flex-shrink: 0; }
+.door-row { align-items: center; flex-wrap: wrap; }
+.door-row .btn { min-height: 2.6rem; padding: .2rem .7rem; font-size: .95rem; }
+.pill.young { background: var(--night-soft); color: var(--night); }
+
 /* ---------- forms ---------- */
 .field { display: flex; flex-direction: column; gap: .35rem; }
 .field label, .field .lab { font-weight: 700; }

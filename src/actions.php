@@ -270,8 +270,39 @@ function action_door(array $in): array
     if ($action !== 'open' && $action !== 'close') {
         throw new ApiError('Action inconnue.');
     }
+    // « chosen »: the time was picked by hand (forgot to note it): checked, never silently moved
+    $at = !empty($in['chosen']) ? door_time($in['at'] ?? null) : client_time($in['at'] ?? null);
     db()->prepare('INSERT OR IGNORE INTO door_events (client_id, action, person_id, at) VALUES (?, ?, ?, ?)')
-        ->execute([client_id($in['clientId'] ?? null), $action, me_id(), client_time($in['at'] ?? null)]);
+        ->execute([client_id($in['clientId'] ?? null), $action, me_id(), $at]);
+    return [];
+}
+
+/** A time chosen by hand for the door (forgotten on the moment): the last 7 days, not in the future. */
+function door_time(mixed $ms): int
+{
+    $t = is_numeric($ms) ? intdiv((int) $ms, 1000) : 0;
+    if ($t < now_ts() - 7 * 86400 || $t > now_ts() + 300) {
+        throw new ApiError('Choisissez une heure dans les 7 derniers jours, pas dans le futur.');
+    }
+    return min($t, now_ts());
+}
+
+function action_door_edit(array $in): array
+{
+    require_auth();
+    $at = door_time($in['at'] ?? null);
+    $st = db()->prepare('UPDATE door_events SET at = ? WHERE id = ?');
+    $st->execute([$at, (int) ($in['id'] ?? 0)]);
+    if ($st->rowCount() === 0) {
+        throw new ApiError('Cette ligne n\'existe plus.', 404);
+    }
+    return [];
+}
+
+function action_door_remove(array $in): array
+{
+    require_auth();
+    db()->prepare('DELETE FROM door_events WHERE id = ?')->execute([(int) ($in['id'] ?? 0)]);
     return [];
 }
 
@@ -296,7 +327,12 @@ function action_task_set(array $in): array
     }
     $at = client_time($in['at'] ?? null);
     $when = (new DateTimeImmutable('@' . $at))->setTimezone(tz());
-    $period = $task['frequency'] === 'daily' ? $when->format('Y-m-d') : week_key($when);
+    $period = match ($task['frequency']) {
+        'weekly' => week_key($when),
+        'monthly' => $when->format('Y-m'),
+        'twice' => $when->format('Y-m-d') . '#' . ((int) ($in['slot'] ?? 1) === 2 ? 2 : 1),
+        default => $when->format('Y-m-d'),
+    };
     if (!empty($in['done'])) {
         db()->prepare('INSERT OR IGNORE INTO task_done (task_id, period, person_id, done_at) VALUES (?, ?, ?, ?)')
             ->execute([(int) $task['id'], $period, me_id(), $at]);
@@ -313,14 +349,18 @@ function action_task_save(array $in): array
     if ($label === '') {
         throw new ApiError('Donnez un nom à la tâche.');
     }
-    $freq = ($in['frequency'] ?? 'daily') === 'weekly' ? 'weekly' : 'daily';
+    $freq = in_array($in['frequency'] ?? '', ['daily', 'twice', 'days', 'weekly', 'monthly'], true) ? $in['frequency'] : 'daily';
     $wd = $freq === 'weekly' ? max(1, min(7, (int) ($in['weekday'] ?? 6))) : null;
+    $interval = $freq === 'days' ? max(2, min(60, (int) ($in['interval'] ?? 2))) : null;
+    $md = $freq === 'monthly' ? max(1, min(28, (int) ($in['monthday'] ?? 1))) : null;
     $id = (int) ($in['id'] ?? 0);
     if ($id > 0) {
-        db()->prepare('UPDATE tasks SET label = ?, frequency = ?, weekday = ? WHERE id = ?')->execute([$label, $freq, $wd, $id]);
+        db()->prepare('UPDATE tasks SET label = ?, frequency = ?, weekday = ?, interval_days = ?, monthday = ? WHERE id = ?')
+            ->execute([$label, $freq, $wd, $interval, $md, $id]);
     } else {
         $sort = (int) db()->query('SELECT COALESCE(MAX(sort), 0) + 1 FROM tasks')->fetchColumn();
-        db()->prepare('INSERT INTO tasks (label, frequency, weekday, sort) VALUES (?, ?, ?, ?)')->execute([$label, $freq, $wd, $sort]);
+        db()->prepare('INSERT INTO tasks (label, frequency, weekday, interval_days, monthday, sort) VALUES (?, ?, ?, ?, ?, ?)')
+            ->execute([$label, $freq, $wd, $interval, $md, $sort]);
     }
     return [];
 }
@@ -357,6 +397,7 @@ function action_hen_save(array $in): array
     if ($born !== null && $arrived !== null && $arrived < $born) {
         throw new ApiError('Elle ne peut pas être arrivée avant sa naissance.');
     }
+    $lays = in_array($in['lays'] ?? '', ['oui', 'non', 'inconnu'], true) ? $in['lays'] : 'inconnu';
     $fields = [
         $name,
         species($in['species'] ?? null),
@@ -368,11 +409,18 @@ function action_hen_save(array $in): array
     ];
     $id = (int) ($in['id'] ?? 0);
     if ($id > 0) {
-        db()->prepare('UPDATE hens SET name = ?, species = ?, breed = ?, arrived_on = ?, born_on = ?, mark = ?, egg_color = ? WHERE id = ?')
-            ->execute([...$fields, $id]);
+        // « does not lay yet » → « lays »: that is her first egg, today (the Gazette will tell)
+        $st = db()->prepare('SELECT lays FROM hens WHERE id = ?');
+        $st->execute([$id]);
+        $before = $st->fetchColumn();
+        db()->prepare('UPDATE hens SET name = ?, species = ?, breed = ?, arrived_on = ?, born_on = ?, mark = ?, egg_color = ?, lays = ? WHERE id = ?')
+            ->execute([...$fields, $lays, $id]);
+        if ($before === 'non' && $lays === 'oui') {
+            db()->prepare('UPDATE hens SET laying_since = ? WHERE id = ?')->execute([now()->format('Y-m-d'), $id]);
+        }
     } else {
-        db()->prepare('INSERT INTO hens (name, species, breed, arrived_on, born_on, mark, egg_color, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-            ->execute([...$fields, now_ts()]);
+        db()->prepare('INSERT INTO hens (name, species, breed, arrived_on, born_on, mark, egg_color, lays, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+            ->execute([...$fields, $lays, now_ts()]);
         $id = (int) db()->lastInsertId();
     }
     return ['id' => $id];

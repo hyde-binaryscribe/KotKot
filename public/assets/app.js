@@ -334,7 +334,7 @@
       else html = S.account ? viewMyHouseholds() : viewWelcome();
     } else {
       const views = {
-        accueil: viewHome, oeufs: (x) => (x.id === 'calendrier' ? viewEggCalendar() : x.id === 'jour' ? viewEggDay(x) : x.id === 'qualite' ? viewEggEval() : viewEggs()), porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
+        accueil: viewHome, oeufs: (x) => (x.id === 'calendrier' ? viewEggCalendar() : x.id === 'jour' ? viewEggDay(x) : x.id === 'qualite' ? viewEggEval(x.sub) : viewEggs()), porte: viewDoor, taches: r.id === 'gerer' ? viewTasksManage : viewTasks,
         poules: viewHens, poule: viewHen, reglages: viewSettings, qui: viewWho, sante: viewHealth, race: viewBreed,
         compte: viewAccount, premium: viewPremium, gazette: viewGazette, foyer: viewHouseholdCreate, connexion: viewAccountLogin, inscription: viewRegister,
         'nouveau-mot-de-passe': viewReset, 'mot-de-passe-oublie': viewForgot, rejoindre: viewJoin,
@@ -756,14 +756,16 @@
   }
 
   let evalState = null;
-  function viewEggEval() {
+  function viewEggEval(dayParam) {
     const kinds = eggSpecies();
-    if (!evalState) evalState = { quality: 'mauvais', defects: [], species: kinds[0], recount: false };
+    const presetDay = /^\d{4}-\d{2}-\d{2}$/.test(dayParam || '') && dayParam <= S.today ? dayParam : S.today;
+    if (!evalState || evalState.forDay !== presetDay) evalState = { quality: 'mauvais', defects: [], species: kinds[0], recount: false, forDay: presetDay, day: presetDay };
     const st = evalState;
     if (!kinds.includes(st.species)) st.species = kinds[0];
-    const goodToday = S.eggs?.todayGoodBySpecies?.[st.species] || 0;
+    const isToday = st.day === S.today;
+    const goodToday = isToday ? (S.eggs?.todayGoodBySpecies?.[st.species] || 0) : 1; // past day: the server checks
     return `
-      ${back('#/oeufs', 'Les œufs')}
+      ${back(presetDay === S.today ? '#/oeufs' : `#/oeufs/jour/${presetDay}`, presetDay === S.today ? 'Les œufs' : fmtDayLong(presetDay))}
       <h1>Noter un œuf</h1>
       ${err()}
       <form class="stack" data-form="eggEval">
@@ -774,10 +776,12 @@
           <button type="button" class="q-bad" data-act="evalQuality" data-v="mauvais" aria-pressed="${st.quality === 'mauvais'}">Mauvais</button></div></div>
         <div class="field"><span class="lab">Ce que vous remarquez</span>
           <div class="crit">${Object.entries(EGG_CRITERIA).map(([k, c]) => `<button type="button" data-act="evalCriterion" data-v="${k}" aria-pressed="${st.defects.includes(k)}">${st.defects.includes(k) ? I.check : ''}${h(c.label)}</button>`).join('')}</div></div>
+        <div class="field"><label for="eday">Jour</label>
+          <input id="eday" name="day" type="date" max="${S.today}" min="${addDays(S.today, -730)}" value="${st.day}" data-eval-day></div>
         <div class="field"><label for="enote">Commentaire (facultatif)</label>
           <textarea id="enote" name="note" maxlength="500" placeholder="Ex. trouvé hors du pondoir, coquille très fine…"></textarea></div>
         ${st.quality === 'mauvais' && goodToday ? `<label class="check-row"><input type="checkbox" name="recount" ${st.recount ? 'checked' : ''} data-act-change="evalRecount">
-          <span>Je l'ai déjà compté comme bon aujourd'hui : le passer en mauvais</span></label>` : ''}
+          <span>Je l'ai déjà compté comme bon ${isToday ? 'aujourd\'hui' : 'ce jour-là'} : le passer en mauvais</span></label>` : ''}
         <button class="btn primary big block" type="submit">Enregistrer</button>
         <p class="muted" style="margin:0">${st.quality === 'mauvais' ? 'Un mauvais œuf compte quand même dans la ponte du jour.' : 'Un bon œuf avec une remarque (double jaune, très gros…).'}</p>
       </form>`;
@@ -922,6 +926,7 @@
         <button class="btn big" type="button" data-act="eggDay" data-day="${day}" data-species="${kinds[0]}" data-delta="-1" ${n ? '' : 'disabled'}>−1</button>
         <button class="btn primary big" type="button" data-act="eggDay" data-day="${day}" data-species="${kinds[0]}" data-delta="1" ${n === null ? 'disabled' : ''}>${I.eggPlus} +1</button>
       </div>
+      <a class="btn" href="#/oeufs/qualite/${day}">${I.search} Noter un œuf abîmé ce jour-là</a>
       <form class="card stack" data-form="eggDay" data-day="${day}" data-species="${kinds[0]}">
         <div class="field"><label for="eggn">Ou tapez le nombre d'œufs</label>
           <input id="eggn" name="count" type="number" inputmode="numeric" min="0" max="500" required placeholder="${n ?? ''}"></div>
@@ -934,6 +939,7 @@
   }
 
   function viewEggDayKinds(day, c, n, kinds) {
+    const badLink = `<a class="btn" href="#/oeufs/qualite/${day}">${I.search} Noter un œuf abîmé ce jour-là</a>`;
     const by = c.bySpecies?.[day] || {};
     const prev = addDays(day, -1);
     const next = addDays(day, 1);
@@ -955,6 +961,7 @@
             <button class="btn" type="submit">OK</button>
           </form>
         </div>`).join('')}
+      ${badLink}
       <div class="grid2">
         ${prev >= `${oldestMonth()}-01` ? `<a class="btn" href="#/oeufs/jour/${prev}">‹ La veille</a>` : '<span></span>'}
         ${next <= S.today ? `<a class="btn" href="#/oeufs/jour/${next}">Le lendemain ›</a>` : ''}
@@ -1238,10 +1245,62 @@
       </div>
       <p class="hint">${I.bell}<span>Rappel à ${fmtTime(d.remindAt)} si la porte est encore ouverte (${s.reminderDelay} min après le coucher du soleil).</span></p>`
       : `<p class="hint">${I.pin}<span>Indiquez la ville dans les <a href="#/reglages">Réglages</a> pour avoir les heures du soleil et le rappel.</span></p>`}
+      <details class="card door-forgot" ${doorForgot ? 'open' : ''}>
+        <summary class="forgot-sum">${I.plus} Oublié de le noter ? Indiquer l'heure</summary>
+        <form class="stack" data-form="doorForgot" style="margin-top:.8rem">
+          <div class="seg"><button type="button" data-act="doorForgotAction" data-v="open" aria-pressed="${doorForgotAction === 'open'}">Ouverte</button>
+            <button type="button" data-act="doorForgotAction" data-v="close" aria-pressed="${doorForgotAction === 'close'}">Fermée</button></div>
+          ${doorWhenFields('df', null)}
+          <button class="btn primary" type="submit">Enregistrer</button>
+        </form>
+      </details>
       <h2>Dernières fois</h2>
       <div class="card list">
-        ${(d.history || []).length ? d.history.map((e) => `<div class="kv"><b style="text-align:left">${e.action === 'open' ? 'Ouverte' : 'Fermée'}${e.who ? ` par ${h(e.who)}` : ''}</b><span class="muted">${h(fmtWhen(e.at))}</span></div>`).join('') : '<p class="muted" style="margin:0">Rien de noté pour l\'instant.</p>'}
+        ${(d.history || []).length ? d.history.map((e) => doorEditing === e.id && e.id ? `
+          <form class="stack" data-form="doorEdit" data-id="${e.id}">
+            <b>${e.action === 'open' ? 'Ouverte' : 'Fermée'}${e.who ? ` par ${h(e.who)}` : ''}</b>
+            ${doorWhenFields('de', e.at)}
+            <div class="grid2"><button class="btn primary" type="submit">Enregistrer</button>
+              <button class="btn danger" type="button" data-act="doorRemove" data-id="${e.id}">Supprimer</button></div>
+            <button class="btn" type="button" data-act="doorEditCancel">Annuler</button>
+          </form>` : `
+          <div class="kv door-row"><b style="text-align:left">${e.action === 'open' ? 'Ouverte' : 'Fermée'}${e.who ? ` par ${h(e.who)}` : ''}</b>
+            <span class="muted">${h(fmtWhen(e.at))}</span>
+            ${e.id ? `<button class="btn" type="button" data-act="doorEditStart" data-id="${e.id}" aria-label="Modifier l'heure">Modifier</button>` : ''}</div>`).join('')
+          : '<p class="muted" style="margin:0">Rien de noté pour l\'instant.</p>'}
       </div>`;
+  }
+
+  // Choosing a day (today and the 6 days before) and a time, in the household's time zone.
+  let doorForgot = false;
+  let doorForgotAction = 'close';
+  let doorEditing = null;
+  function doorWhenFields(prefix, ts) {
+    const day = ts ? dayKey(ts) : S.today;
+    const time = ts ? new Intl.DateTimeFormat('fr-FR', { timeZone: tz(), hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(ts * 1000)) : '';
+    const days = [0, 1, 2, 3, 4, 5, 6].map((n) => addDays(S.today, -n));
+    return `
+      <div class="grid2">
+        <div class="field"><label for="${prefix}-day">Jour</label><select id="${prefix}-day" name="day">
+          ${days.map((d, i) => `<option value="${d}" ${d === day ? 'selected' : ''}>${i === 0 ? 'Aujourd\'hui' : i === 1 ? 'Hier' : h(fmtDayLong(d))}</option>`).join('')}</select></div>
+        <div class="field"><label for="${prefix}-time">Heure</label><input id="${prefix}-time" name="time" type="time" required value="${time}"></div>
+      </div>`;
+  }
+  /** "2026-11-02" + "20:15" in the household's time zone → milliseconds. */
+  function localToMs(day, time) {
+    const guess = Date.parse(`${day}T${time}:00Z`);
+    // shift by the household's offset at that moment (exact for Europe and most zones)
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(guess));
+    const get = (k) => Number(parts.find((x) => x.type === k).value);
+    const asLocal = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'));
+    return guess - (asLocal - guess);
+  }
+  function doorRecompute() {
+    const d = S.door;
+    d.history.sort((a, b) => b.at - a.at);
+    const last = d.history[0];
+    d.state = last ? (last.action === 'open' ? 'open' : 'closed') : 'unknown';
+    d.shouldClose = false; d.shouldOpen = false;
   }
 
   function doorChange(action) {
@@ -1260,28 +1319,42 @@
   }
 
   // ---------- tâches
+  /** "Tous les jours", "Matin et soir", "1 jour sur 2", "Le samedi", "Le 1er du mois"… */
+  function rhythmText(t) {
+    if (t.frequency === 'twice') return 'Matin et soir';
+    if (t.frequency === 'days') return t.interval === 2 ? '1 jour sur 2' : t.interval === 14 ? 'Toutes les 2 semaines' : `Tous les ${t.interval} jours`;
+    if (t.frequency === 'weekly') return `Le ${WEEKDAYS[t.weekday] || 'samedi'}`;
+    if (t.frequency === 'monthly') return `Le ${t.monthday === 1 ? '1er' : t.monthday} du mois`;
+    return 'Tous les jours';
+  }
+  const nextText = (iso) => (iso === addDays(S.today, 1) ? 'demain' : fmtDayLong(iso).toLowerCase());
+
   function taskSub(t) {
-    if (t.done) return `Fait par ${h(t.doneBy || '?')} à ${fmtTime(t.doneAt)}`;
-    if (t.frequency === 'daily') return 'Tous les jours';
-    const day = `Le ${WEEKDAYS[t.weekday] || 'week-end'}`;
-    return t.lateDays ? `${day} · <span class="late">en retard de ${plural(t.lateDays, 'jour', 'jours')}</span>` : day;
+    if (t.done) return `Fait par ${h(t.doneBy || '?')} à ${fmtTime(t.doneAt)}${t.nextDay ? ` · prochaine fois ${h(nextText(t.nextDay))}` : ''}`;
+    if (!t.dueToday && t.nextDay) return `${rhythmText(t)} · prochaine fois ${h(nextText(t.nextDay))}`;
+    return t.lateDays ? `${rhythmText(t)} · <span class="late">en retard de ${plural(t.lateDays, 'jour', 'jours')}</span>` : rhythmText(t);
   }
 
   function viewTasks() {
     const tc = taskCounts();
     const tasks = S.tasks || [];
-    const daily = tasks.filter((t) => t.frequency === 'daily');
-    const weekly = tasks.filter((t) => t.frequency === 'weekly');
-    const item = (t) => `<button type="button" class="task ${t.done ? 'done' : ''}" data-act="task" data-id="${t.id}" aria-pressed="${t.done}">
+    const today = tasks.filter((t) => t.dueToday);
+    const later = tasks.filter((t) => !t.dueToday);
+    const item = (t) => (t.frequency === 'twice' ? `
+      <div class="task twice ${t.done ? 'done' : ''}">
+        <span><span class="label">${h(t.label)}</span><span class="sub">Matin et soir</span></span>
+        <div class="slots">${t.slots.map((sl) => `<button type="button" class="slot ${sl.done ? 'on' : ''}" data-act="taskSlot" data-id="${t.id}" data-slot="${sl.slot}" aria-pressed="${sl.done}">
+          <span class="box">${sl.done ? I.check : ''}</span><span><b>${sl.label}</b>${sl.done ? `<span class="sub">${h(sl.doneBy || '?')} · ${fmtTime(sl.doneAt)}</span>` : ''}</span></button>`).join('')}</div>
+      </div>` : `<button type="button" class="task ${t.done ? 'done' : ''}" data-act="task" data-id="${t.id}" aria-pressed="${t.done}">
         <span class="box">${t.done ? I.check : ''}</span>
-        <span><span class="label">${h(t.label)}</span><span class="sub">${taskSub(t)}</span></span></button>`;
+        <span><span class="label">${h(t.label)}</span><span class="sub">${taskSub(t)}</span></span></button>`);
     return `
       ${back('#/', 'Accueil')}
       <div class="row between"><h1>Aujourd'hui</h1><b style="font-size:1.15rem">${tc.done} sur ${tc.total}</b></div>
       ${offlineBanner()}
-      <div class="stack">${daily.map(item).join('') || '<p class="muted">Aucune tâche quotidienne.</p>'}</div>
-      ${weekly.length ? `<h2>Cette semaine</h2><div class="stack">${weekly.map(item).join('')}</div>` : ''}
-      <a class="btn ghost" href="#/taches/gerer">${I.plus} Ajouter ou retirer des tâches</a>`;
+      <div class="stack">${today.map(item).join('') || '<p class="muted">Rien à faire aujourd\'hui.</p>'}</div>
+      ${later.length ? `<h2>Plus tard</h2><div class="stack">${later.map(item).join('')}</div>` : ''}
+      <a class="btn ghost" href="#/taches/gerer">${I.plus} Ajouter, modifier ou retirer des tâches</a>`;
   }
 
   function taskToggle(id) {
@@ -1291,31 +1364,56 @@
     t.doneBy = t.done ? me()?.name : null;
     t.doneAt = t.done ? Math.floor(Date.now() / 1000) : null;
     if (t.done) t.lateDays = 0;
+    if (t.done && t.frequency === 'days') t.nextDay = addDays(S.today, t.interval || 2);
     enqueue('task_set', { taskId: id, done: t.done });
     if (t.done && navigator.vibrate) navigator.vibrate(30);
   }
 
-  let newTaskFreq = 'daily';
+  function taskSlotToggle(id, slot) {
+    const t = S.tasks.find((x) => x.id === id);
+    const sl = t?.slots?.find((x) => x.slot === slot);
+    if (!sl) return;
+    sl.done = !sl.done;
+    sl.doneBy = sl.done ? me()?.name : null;
+    sl.doneAt = sl.done ? Math.floor(Date.now() / 1000) : null;
+    t.done = t.slots.every((x) => x.done);
+    enqueue('task_set', { taskId: id, slot, done: sl.done });
+    if (sl.done && navigator.vibrate) navigator.vibrate(30);
+  }
+
+  // The rhythms offered when adding or changing a task.
+  const RHYTHMS = [
+    ['daily', 'Tous les jours'], ['twice', '2 fois par jour'], ['days2', '1 jour sur 2'], ['daysN', 'Tous les … jours'],
+    ['weekly', 'Chaque semaine'], ['biweekly', 'Toutes les 2 semaines'], ['monthly', 'Chaque mois'],
+  ];
+  const rhythmOf = (t) => (t.frequency === 'days' ? (t.interval === 2 ? 'days2' : t.interval === 14 ? 'biweekly' : 'daysN') : t.frequency);
+  let taskForm = null; // { id, rhythm, interval, weekday, monthday, label }
   function viewTasksManage() {
+    const f = taskForm || (taskForm = { id: null, rhythm: 'daily', interval: 3, weekday: 6, monthday: 1, label: '' });
     return `
       ${back('#/taches', 'Tâches')}
       <h1>Gérer les tâches</h1>
       ${err()}
       <div class="card list">
-        ${(S.tasks || []).map((t) => `<div class="row between"><span><b>${h(t.label)}</b><br><span class="muted">${t.frequency === 'daily' ? 'Tous les jours' : 'Le ' + WEEKDAYS[t.weekday]}</span></span>
-          <button class="btn danger" type="button" data-act="taskRemove" data-id="${t.id}">Retirer</button></div>`).join('') || '<p class="muted">Aucune tâche.</p>'}
+        ${(S.tasks || []).map((t) => `<div class="row between"><span><b>${h(t.label)}</b><br><span class="muted">${rhythmText(t)}</span></span>
+          <span class="row" style="gap:.4rem"><button class="btn" type="button" data-act="taskEdit" data-id="${t.id}">Modifier</button>
+          <button class="btn danger" type="button" data-act="taskRemove" data-id="${t.id}" aria-label="Retirer ${h(t.label)}">Retirer</button></span></div>`).join('') || '<p class="muted">Aucune tâche.</p>'}
       </div>
-      <h2>Nouvelle tâche</h2>
+      <h2 id="task-form-title">${f.id ? 'Modifier la tâche' : 'Nouvelle tâche'}</h2>
       <form class="stack" data-form="task">
-        <div class="field"><label for="tlabel">Quoi ?</label><input id="tlabel" name="label" maxlength="80" required placeholder="Ex. Changer la paille"></div>
+        <div class="field"><label for="tlabel">Quoi ?</label><input id="tlabel" name="label" maxlength="80" required placeholder="Ex. Changer la paille" value="${h(f.label)}"></div>
         <div class="field"><span class="lab">Quand ?</span>
-          <div class="seg">
-            <button type="button" data-act="taskFreq" data-v="daily" aria-pressed="${newTaskFreq === 'daily'}">Tous les jours</button>
-            <button type="button" data-act="taskFreq" data-v="weekly" aria-pressed="${newTaskFreq === 'weekly'}">Une fois par semaine</button>
-          </div></div>
-        ${newTaskFreq === 'weekly' ? `<div class="field"><label for="twd">Quel jour ?</label><select id="twd" name="weekday">
-          ${WEEKDAYS.slice(1).map((d, i) => `<option value="${i + 1}" ${i + 1 === 6 ? 'selected' : ''}>${d}</option>`).join('')}</select></div>` : ''}
-        <button class="btn primary block" type="submit">${I.plus} Ajouter</button>
+          <div class="seg wrap">${RHYTHMS.map(([k, l]) => `<button type="button" data-act="taskFreq" data-v="${k}" aria-pressed="${f.rhythm === k}">${l}</button>`).join('')}</div></div>
+        ${f.rhythm === 'daysN' ? `<div class="field"><label for="tint">Tous les combien de jours ?</label><select id="tint" name="interval">
+          ${[3, 4, 5, 6, 7, 10, 21, 30].map((n) => `<option value="${n}" ${n === f.interval ? 'selected' : ''}>Tous les ${n} jours</option>`).join('')}</select></div>` : ''}
+        ${f.rhythm === 'weekly' ? `<div class="field"><label for="twd">Quel jour ?</label><select id="twd" name="weekday">
+          ${WEEKDAYS.slice(1).map((d, i) => `<option value="${i + 1}" ${i + 1 === f.weekday ? 'selected' : ''}>${d}</option>`).join('')}</select></div>` : ''}
+        ${f.rhythm === 'monthly' ? `<div class="field"><label for="tmd">Quel jour du mois ?</label><select id="tmd" name="monthday">
+          ${Array.from({ length: 28 }, (_, i) => i + 1).map((n) => `<option value="${n}" ${n === f.monthday ? 'selected' : ''}>Le ${n === 1 ? '1er' : n}</option>`).join('')}</select></div>` : ''}
+        ${f.rhythm === 'twice' ? '<p class="muted" style="margin:0">Deux cases à cocher chaque jour : matin et soir.</p>' : ''}
+        ${['days2', 'daysN', 'biweekly'].includes(f.rhythm) ? '<p class="muted" style="margin:0">Compté à partir de la dernière fois où c\'est fait.</p>' : ''}
+        <button class="btn primary block" type="submit">${f.id ? 'Enregistrer' : `${I.plus} Ajouter`}</button>
+        ${f.id ? '<button class="btn" type="button" data-act="taskEditCancel">Annuler la modification</button>' : ''}
       </form>`;
   }
 
@@ -1334,7 +1432,8 @@
       <div class="grid2">
         ${hens.map((x) => `<a class="hen-card" href="#/poule/${x.id}">${henAvatar(x, 'xl')}<span class="name">${h(x.name)}</span>
           ${[onlyHens() ? '' : cap(SPECIES[sp(x)].one), x.breed].filter(Boolean).length ? `<span class="muted">${h([onlyHens() ? '' : cap(SPECIES[sp(x)].one), x.breed].filter(Boolean).join(' · '))}</span>` : ''}
-          <span class="pill ${x.status === 'watch' ? 'watch' : ''}">${x.status === 'watch' ? 'À surveiller' : 'En forme'}</span></a>`).join('')}
+          <span class="pill ${x.status === 'watch' ? 'watch' : ''}">${x.status === 'watch' ? 'À surveiller' : 'En forme'}</span>
+          ${x.lays === 'non' ? '<span class="pill young">Ne pond pas encore</span>' : ''}</a>`).join('')}
       </div>
       ${hens.length ? '' : '<p class="muted">Ajoutez vos poules (ou cailles, canards…) une par une : un nom suffit, le reste est facultatif.</p>'}`;
   }
@@ -1523,6 +1622,7 @@
     const since = (iso) => spanDays(daysBetween(iso, S.today));
     const rows = [
       ['Espèce', onlyHens() ? '' : cap(SPECIES[sp(hen)].one)],
+      ['Ponte', hen.lays === 'non' ? 'Ne pond pas encore' : hen.lays === 'oui' ? (hen.layingSince ? `Pond depuis le ${fmtLongDay(hen.layingSince)}` : 'Pond') : ''],
       ['Naissance', hen.bornOn ? `${fmtLongDay(hen.bornOn)} (${since(hen.bornOn)})` : ''],
       ['Arrivée', hen.arrivedOn ? `${fmtLongDay(hen.arrivedOn)} (il y a ${since(hen.arrivedOn)})` : hen.arrived],
       ['Signe distinctif', hen.mark],
@@ -1556,10 +1656,11 @@
   }
 
   let formSpecies = null;
+  let formLays = 'inconnu';
   let formFor = null;
   function viewHenForm(hen) {
     const v = hen || { name: '', breed: '', arrived: '', mark: '', eggColor: '', bornOn: '', arrivedOn: '' };
-    if (formFor !== (hen ? hen.id : 'new')) { formFor = hen ? hen.id : 'new'; formSpecies = hen ? sp(hen) : store.get('kk-last-species', 'poule'); }
+    if (formFor !== (hen ? hen.id : 'new')) { formFor = hen ? hen.id : 'new'; formSpecies = hen ? sp(hen) : store.get('kk-last-species', 'poule'); formLays = hen ? hen.lays || 'inconnu' : 'inconnu'; }
     const field = (name, label, ph, max = 60) => `<div class="field"><label for="f-${name}">${label}</label><input id="f-${name}" name="${name}" value="${h(v[name])}" maxlength="${max}" placeholder="${ph}"></div>`;
     const dateField = (name, label, hint = '') => `<div class="field"><label for="f-${name}">${label} <span class="muted" style="font-weight:400">(facultatif)</span></label>
       <input id="f-${name}" name="${name}" type="date" max="${S.today}" min="1990-01-01" value="${h(v[name] || '')}">${hint}</div>`;
@@ -1573,6 +1674,9 @@
         <div class="field"><label for="f-name">Son nom</label><input id="f-name" name="name" value="${h(v.name)}" maxlength="40" required></div>
         ${field('breed', 'Race ou couleur', formSpecies === 'poule' ? 'Ex. Rousse' : 'Ex. Japonaise')}
         ${hen && formSpecies === 'poule' ? `<a href="#/race/${hen.id}" style="margin-top:-.5rem">Je ne sais pas : m'aider à trouver sa race</a>` : ''}
+        <div class="field"><span class="lab">Ponte</span>
+          <div class="seg">${[['oui', 'Pond'], ['non', 'Ne pond pas encore'], ['inconnu', 'Je ne sais pas']].map(([k, l]) => `<button type="button" data-act="formLays" data-v="${k}" aria-pressed="${formLays === k}">${l}</button>`).join('')}</div>
+          <span class="muted">Le jour où elle passe à « Pond », la Gazette fête son premier œuf.</span></div>
         ${dateField('bornOn', 'Date de naissance', '<span class="muted">Pour connaître son âge, et son âge sur chaque photo.</span>')}
         ${dateField('arrivedOn', 'Date d\'arrivée', v.arrived && !v.arrivedOn ? `<span class="muted">Noté avant : « ${h(v.arrived)} »</span>` : '')}
         ${field('mark', 'Signe distinctif', 'Ex. bague bleue', 80)}
@@ -1979,7 +2083,24 @@
     egg: (el) => eggChange(Number(el.dataset.delta), el.dataset.species || 'poule'),
     door: (el) => doorChange(el.dataset.action),
     task: (el) => taskToggle(Number(el.dataset.id)),
-    taskFreq(el) { newTaskFreq = el.dataset.v; const label = app.querySelector('#tlabel')?.value; render(); if (label) app.querySelector('#tlabel').value = label; },
+    taskSlot: (el) => taskSlotToggle(Number(el.dataset.id), Number(el.dataset.slot)),
+    taskFreq(el) { taskForm.rhythm = el.dataset.v; keepForm(() => render()); },
+    taskEdit(el) {
+      const t = S.tasks.find((x) => x.id === Number(el.dataset.id));
+      if (!t) return;
+      taskForm = { id: t.id, rhythm: rhythmOf(t), interval: t.interval || 3, weekday: t.weekday || 6, monthday: t.monthday || 1, label: t.label };
+      render();
+      document.getElementById('task-form-title')?.scrollIntoView({ behavior: 'smooth' });
+    },
+    taskEditCancel() { taskForm = null; render(); },
+    doorForgotAction(el) { doorForgotAction = el.dataset.v; keepForm(() => render()); },
+    doorEditStart(el) { doorEditing = Number(el.dataset.id); render(); },
+    doorEditCancel() { doorEditing = null; render(); },
+    async doorRemove(el) {
+      if (!confirm('Supprimer cette ligne de l\'historique ?')) return;
+      await call('door_remove', { id: Number(el.dataset.id) });
+      doorEditing = null; toast('Ligne supprimée'); render();
+    },
     async taskRemove(el) {
       const id = Number(el.dataset.id);
       await call('task_remove', { id });
@@ -2031,6 +2152,7 @@
     },
     async accountLogout() { await call('account_logout', {}); toast('Déconnecté du compte'); go(S.auth ? '#/reglages' : '#/'); },
     formSpecies(el) { formSpecies = el.dataset.v; keepForm(() => render()); },
+    formLays(el) { formLays = el.dataset.v; keepForm(() => render()); },
     evalQuality(el) { evalState.quality = el.dataset.v; keepForm(() => render()); },
     evalSpecies(el) { evalState.species = el.dataset.v; keepForm(() => render()); },
     evalCriterion(el) {
@@ -2138,7 +2260,7 @@
     async quizPick(el) {
       const hen = S.hens.find((x) => x.id === quiz.henId);
       if (!hen) return;
-      await call('hen_save', { id: hen.id, species: sp(hen), name: hen.name, breed: el.dataset.name, bornOn: hen.bornOn, arrivedOn: hen.arrivedOn, mark: hen.mark, eggColor: hen.eggColor });
+      await call('hen_save', { id: hen.id, species: sp(hen), lays: hen.lays, name: hen.name, breed: el.dataset.name, bornOn: hen.bornOn, arrivedOn: hen.arrivedOn, mark: hen.mark, eggColor: hen.eggColor });
       toast(`${hen.name} : ${el.dataset.name}`);
       quiz = { step: 0, answers: {}, henId: null };
       go(`#/poule/${hen.id}`);
@@ -2170,9 +2292,13 @@
     });
   });
 
+  // remember whether « Oublié de le noter ? » is open across redraws
+  document.addEventListener('toggle', (ev) => { if (ev.target.matches?.('details.door-forgot')) doorForgot = ev.target.open; }, true);
+
   document.addEventListener('change', (ev) => {
     rememberField(ev.target);
     if (ev.target.dataset.actChange === 'evalRecount' && evalState) evalState.recount = ev.target.checked;
+    if (ev.target.matches('[data-eval-day]') && evalState && ev.target.value) { evalState.day = ev.target.value; keepForm(() => render()); }
     if (ev.target.matches('[data-photo-date]')) photoDate = ev.target.value;
     const input = ev.target.closest('[data-photo]');
     if (input?.files?.[0]) uploadPhoto(Number(input.dataset.photo), input.files[0]);
@@ -2189,6 +2315,19 @@
       const st = evalState;
       const note = String(fd.get('note') || '').trim();
       if (st.quality === 'bon' && !st.defects.length && !note) return showError('Cochez au moins un critère ou écrivez un commentaire.');
+      const day = String(fd.get('day') || S.today);
+      if (day > S.today) return showError('Ce jour n\'est pas encore arrivé.');
+      if (day !== S.today) {
+        // a past day: sent as it is, the calendar and the counts come back from the server
+        const clientId = enqueue('egg_eval', { quality: st.quality, defects: st.defects, note, species: st.species, recount: st.recount, day });
+        const c = monthCache[monthOf(day)];
+        if (c) c.fetchedAt = 0;
+        S.eggs.quality.recent.unshift({ clientId, day, species: st.species, quality: st.quality, defects: [...st.defects], note, who: me()?.name, at: Math.floor(Date.now() / 1000) });
+        evalState = null;
+        go(`#/oeufs/jour/${day}`);
+        toast(`${st.quality === 'bon' ? 'Bon' : 'Mauvais'} œuf noté pour ${fmtDayLong(day).toLowerCase()}`, () => enqueue('egg_undo', { clientId }));
+        return;
+      }
       const recount = st.quality === 'mauvais' && st.recount && (S.eggs.todayGoodBySpecies?.[st.species] || 0) > 0;
       const e = S.eggs;
       const apply = (sign) => {
@@ -2287,13 +2426,47 @@
       await call('health_add', { kind: healthKind, henId: fd.get('henId') ? Number(fd.get('henId')) : null, day, nextDue: healthNext ? addDays(day, healthNext) : null, note: fd.get('note') });
       errorText = ''; toast('Soin noté'); render(); window.scrollTo(0, 0);
     },
+    doorForgot(f, fd) {
+      const at = localToMs(fd.get('day'), fd.get('time'));
+      if (at > Date.now() + 60000) return showError('Cette heure n\'est pas encore passée.');
+      const d = S.door;
+      const clientId = uid();
+      const action = doorForgotAction;
+      d.history = [{ action, at: Math.floor(at / 1000), who: me()?.name, clientId }, ...(d.history || [])];
+      doorRecompute();
+      enqueue('door', { action, at, chosen: true, clientId });
+      doorForgot = false;
+      toast(`${action === 'open' ? 'Ouverture' : 'Fermeture'} notée à ${fmtTime(Math.floor(at / 1000))}`, () => {
+        d.history = d.history.filter((x) => x.clientId !== clientId);
+        doorRecompute();
+        enqueue('door_undo', { clientId });
+      });
+      render();
+    },
+    async doorEdit(f, fd) {
+      const at = localToMs(fd.get('day'), fd.get('time'));
+      if (at > Date.now() + 60000) return showError('Cette heure n\'est pas encore passée.');
+      await call('door_edit', { id: Number(f.dataset.id), at });
+      doorEditing = null; toast('Heure corrigée'); render();
+    },
     async task(f, fd) {
-      await call('task_save', { label: fd.get('label'), frequency: newTaskFreq, weekday: Number(fd.get('weekday') || 6) });
-      errorText = ''; toast('Tâche ajoutée'); render();
+      const r = taskForm.rhythm;
+      const body = {
+        id: taskForm.id || 0,
+        label: fd.get('label'),
+        frequency: { days2: 'days', daysN: 'days', biweekly: 'days' }[r] || r,
+        interval: r === 'days2' ? 2 : r === 'biweekly' ? 14 : Number(fd.get('interval') || 3),
+        weekday: Number(fd.get('weekday') || 6),
+        monthday: Number(fd.get('monthday') || 1),
+      };
+      await call('task_save', body);
+      const edited = !!taskForm.id;
+      taskForm = null;
+      errorText = ''; toast(edited ? 'Tâche modifiée' : 'Tâche ajoutée'); render();
     },
     async hen(f, fd) {
       const id = Number(f.dataset.id || 0);
-      const data = await call('hen_save', { id, species: formSpecies, name: fd.get('name'), breed: fd.get('breed'), bornOn: fd.get('bornOn'), arrivedOn: fd.get('arrivedOn'), mark: fd.get('mark'), eggColor: fd.get('eggColor') });
+      const data = await call('hen_save', { id, species: formSpecies, lays: formLays, name: fd.get('name'), breed: fd.get('breed'), bornOn: fd.get('bornOn'), arrivedOn: fd.get('arrivedOn'), mark: fd.get('mark'), eggColor: fd.get('eggColor') });
       store.set('kk-last-species', formSpecies);
       formFor = null;
       errorText = ''; toast(id ? 'Fiche enregistrée' : 'Bienvenue à elle !'); go(`#/poule/${data.id}`);

@@ -36,6 +36,12 @@ La V1 est en ligne. Toutes les idées ci-dessous ont été validées ; l'ordre p
 - [x] **« À la une »** de la Gazette sur l'accueil, différente à chaque ouverture (masquable dans Réglages)
 - [x] Gazette enrichie : des centaines de variantes, et des rubriques quotidiennes (horoscope de la basse-cour, météo du perchoir, petites annonces, portrait, chiffre du jour, conseil de Mamie Poule, pensée du jour, courrier des lecteurs)
 
+## V2.8 — fait
+- [x] Porte : indiquer l'heure après coup, corriger ou supprimer une ligne de l'historique
+- [x] Mauvais œuf noté pour un jour passé (depuis le calendrier)
+- [x] Tâches : 2 fois par jour, 1 jour sur 2, tous les N jours, toutes les 2 semaines, chaque mois ; tâches modifiables
+- [x] Ponte : « Pond / Ne pond pas encore / Je ne sais pas » ; premier œuf fêté dans la Gazette
+
 ## Prochaine étape
 - [ ] **Paiement en ligne** (Stripe : abonnement annuel, factures, résiliation)
 - [ ] **Pages légales** : mentions légales, CGV, confidentialité

@@ -203,6 +203,14 @@ window.KOTKOT_GAZETTE = (() => {
       bodies: ['Toute la basse-cour lui souhaite un prompt rétablissement. Les visites sont limitées aux vers de terre.',
         'Repos, eau fraîche et petits soins. Toute la famille veille sur {name}.'],
     },
+    firstEgg: {
+      kickers: ['Grande première', 'Événement', 'Ça y est !'],
+      titles: ['{name} a pondu son premier œuf !', 'Premier œuf pour {name}', '{name} entre dans la cour des grandes', 'Bienvenue au club des pondeuses, {name}'],
+      bodies: ['Toute la basse-cour a applaudi. La jeune pondeuse, émue, a demandé un ver de farine et un peu d\'intimité.',
+        'Un moment historique. Selon {t}, « elle était fière comme une poule qui a trouvé un couteau ». Enfin, à peu près.',
+        'Les anciennes l\'avaient bien dit : « Ça viendra quand ça viendra. » C\'est venu.',
+        'Premier œuf, premier pas dans le monde du travail. La rédaction lui souhaite une longue et belle carrière.'],
+    },
     photo: {
       kickers: ['Photo du jour', 'Paparazzi'],
       titles: ['{name} prend la pose', '{name}, star de la semaine', 'Séance photo pour {name}', 'Regardez-moi cette beauté'],
@@ -313,7 +321,7 @@ window.KOTKOT_GAZETTE = (() => {
 
     const week = e.last7 || 0;
     if (week) {
-      const layers = hens.filter((x) => c.species(x) === 'poule').length || hens.length || 1;
+      const layers = hens.filter((x) => c.species(x) === 'poule' && x.lays !== 'non').length || hens.filter((x) => x.lays !== 'non').length || 1;
       add('week', EV.week, {
         n: week,
         per: (week / layers).toLocaleString('fr-FR', { maximumFractionDigits: 1 }),
@@ -350,6 +358,7 @@ window.KOTKOT_GAZETTE = (() => {
         const years = Number(c.today.slice(0, 4)) - Number(hen.bornOn.slice(0, 4));
         if (years >= 1 && gap >= 0 && gap <= 3) add(`birthday-${hen.id}`, EV.birthday, { name: hen.name, age: c.plural(years, 'an', 'ans') }, { image: c.avatarOf(hen), priority: 4 });
       }
+      if (hen.layingSince && c.daysBetween(hen.layingSince, c.today) <= 7) add(`first-${hen.id}`, EV.firstEgg, { name: hen.name }, { image: c.avatarOf(hen), priority: 5 });
       if (hen.status === 'watch') add(`sick-${hen.id}`, EV.sick, { name: hen.name }, { image: c.avatarOf(hen), priority: 2 });
     }
     for (const shot of (g.photos || []).slice(0, 2)) {
